@@ -250,7 +250,7 @@ train_ratio = 0.75               # the ratio of data used for training, the rest
 seed = 10901036                        # random seed
 batch_size = 128                # batch size
 num_epoch = 10                   # the number of training epoch
-learning_rate = 1e-4         # learning rate
+learning_rate = 5e-4         # learning rate
 model_path = './model.ckpt'     # the path where the checkpoint will be saved
 
 # model parameters
@@ -367,6 +367,7 @@ gc.collect()
 
 # %% [code] {"id":"VOG1Ou0PGrhc","outputId":"3373d328-bb42-48ec-92f2-e2e935c3344c","vscode":{"languageId":"python"},"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-16T14:51:20.517846Z","iopub.status.idle":"2023-03-16T14:51:20.518364Z","shell.execute_reply.started":"2023-03-16T14:51:20.518075Z","shell.execute_reply":"2023-03-16T14:51:20.518097Z"}}
 # load data
+
 test_X = preprocess_data(split='test', feat_dir=feature_dir, phone_path=libriphone_path, concat_nframes=concat_nframes)
 test_set = LibriDataset(test_X, None)
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
