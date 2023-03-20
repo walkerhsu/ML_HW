@@ -1,3 +1,4 @@
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.593407Z","iopub.execute_input":"2023-03-20T03:01:21.594164Z","iopub.status.idle":"2023-03-20T03:01:21.606912Z","shell.execute_reply.started":"2023-03-20T03:01:21.594066Z","shell.execute_reply":"2023-03-20T03:01:21.605704Z"}}
 # -*- coding: utf-8 -*-
 """「ML2023-HW3-ImageClassification」的副本
 
@@ -46,16 +47,13 @@ Notes: if the links are dead, you can download the data directly from Kaggle and
 # #### Solve image classification with convolutional neural networks(CNN).
 # #### If you have any questions, please contact the TAs via TA hours, NTU COOL, or email to mlta-2023-spring@googlegroups.com
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T09:50:15.941617Z","iopub.execute_input":"2023-03-17T09:50:15.942552Z","iopub.status.idle":"2023-03-17T09:50:16.984582Z","shell.execute_reply.started":"2023-03-17T09:50:15.942495Z","shell.execute_reply":"2023-03-17T09:50:16.983344Z"}}
-# check GPU type.
-
 # %% [markdown]
 # ### Import Packages
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T09:50:16.987407Z","iopub.execute_input":"2023-03-17T09:50:16.988018Z","iopub.status.idle":"2023-03-17T09:50:16.993612Z","shell.execute_reply.started":"2023-03-17T09:50:16.987970Z","shell.execute_reply":"2023-03-17T09:50:16.992115Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.609337Z","iopub.execute_input":"2023-03-20T03:01:21.610227Z","iopub.status.idle":"2023-03-20T03:01:21.618891Z","shell.execute_reply.started":"2023-03-20T03:01:21.610180Z","shell.execute_reply":"2023-03-20T03:01:21.617836Z"}}
 _exp_name = "sample"
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T09:50:16.995048Z","iopub.execute_input":"2023-03-17T09:50:16.995559Z","iopub.status.idle":"2023-03-17T09:50:17.005624Z","shell.execute_reply.started":"2023-03-17T09:50:16.995512Z","shell.execute_reply":"2023-03-17T09:50:17.004573Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.620915Z","iopub.execute_input":"2023-03-20T03:01:21.621831Z","iopub.status.idle":"2023-03-20T03:01:21.633641Z","shell.execute_reply.started":"2023-03-20T03:01:21.621787Z","shell.execute_reply":"2023-03-20T03:01:21.632544Z"}}
 # Import necessary packages.
 import math
 import numpy as np
@@ -74,7 +72,7 @@ from tqdm.auto import tqdm
 import random
 from accelerate import Accelerator
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T09:50:17.008709Z","iopub.execute_input":"2023-03-17T09:50:17.009115Z","iopub.status.idle":"2023-03-17T09:50:17.019760Z","shell.execute_reply.started":"2023-03-17T09:50:17.009081Z","shell.execute_reply":"2023-03-17T09:50:17.018847Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.637983Z","iopub.execute_input":"2023-03-20T03:01:21.639713Z","iopub.status.idle":"2023-03-20T03:01:21.645937Z","shell.execute_reply.started":"2023-03-20T03:01:21.639668Z","shell.execute_reply":"2023-03-20T03:01:21.644841Z"}}
 myseed = 6666  # set a random seed for reproducibility
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -86,7 +84,7 @@ if torch.cuda.is_available():
 # %% [markdown]
 # ### Transforms
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T09:50:17.022137Z","iopub.execute_input":"2023-03-17T09:50:17.022456Z","iopub.status.idle":"2023-03-17T09:50:17.031962Z","shell.execute_reply.started":"2023-03-17T09:50:17.022413Z","shell.execute_reply":"2023-03-17T09:50:17.030980Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.647815Z","iopub.execute_input":"2023-03-20T03:01:21.648755Z","iopub.status.idle":"2023-03-20T03:01:21.658680Z","shell.execute_reply.started":"2023-03-20T03:01:21.648718Z","shell.execute_reply":"2023-03-20T03:01:21.657567Z"}}
 # Normally, We don't need augmentations in testing and validation.
 # All we need here is to resize the PIL image and transform it into Tensor.
 test_tfm = transforms.Compose([
@@ -108,17 +106,15 @@ train_tfm = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-
 # %% [markdown]
 # ### Datasets
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T09:50:17.033639Z","iopub.execute_input":"2023-03-17T09:50:17.034177Z","iopub.status.idle":"2023-03-17T09:50:17.045575Z","shell.execute_reply.started":"2023-03-17T09:50:17.034065Z","shell.execute_reply":"2023-03-17T09:50:17.044552Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.660644Z","iopub.execute_input":"2023-03-20T03:01:21.661428Z","iopub.status.idle":"2023-03-20T03:01:21.670614Z","shell.execute_reply.started":"2023-03-20T03:01:21.661390Z","shell.execute_reply":"2023-03-20T03:01:21.669451Z"}}
 class FoodDataset(Dataset):
 
     def __init__(self,files,tfm=test_tfm):
         super(FoodDataset).__init__()
         self.files = files
-        print(self.files[0], self.files[1], self.files[2])
 
         self.transform = tfm
   
@@ -142,7 +138,7 @@ class FoodDataset(Dataset):
 # %% [markdown]
 # ### Model
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T09:50:17.047041Z","iopub.execute_input":"2023-03-17T09:50:17.047514Z","iopub.status.idle":"2023-03-17T09:50:17.061237Z","shell.execute_reply.started":"2023-03-17T09:50:17.047478Z","shell.execute_reply":"2023-03-17T09:50:17.059968Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.723331Z","iopub.execute_input":"2023-03-20T03:01:21.724185Z","iopub.status.idle":"2023-03-20T03:01:21.741302Z","shell.execute_reply.started":"2023-03-20T03:01:21.724138Z","shell.execute_reply":"2023-03-20T03:01:21.740030Z"}}
 class Classifier(nn.Module):
     def __init__(self):
         super(Classifier, self).__init__()
@@ -168,20 +164,25 @@ class Classifier(nn.Module):
             nn.Conv2d(256, 512, 3, 1, 1), # [512, 16, 16]
             nn.BatchNorm2d(512),
             nn.ReLU(),
-            nn.MaxPool2d(2, 2, 0),       # [512, 8, 8]
+#             nn.MaxPool2d(2, 2, 0),       # [512, 8, 8]
             
-            nn.Conv2d(512, 512, 3, 1, 1), # [512, 8, 8]
-            nn.BatchNorm2d(512),
+            nn.Conv2d(512, 1024, 3, 1, 1), # [1024, 16, 16]
+            nn.BatchNorm2d(1024),
             nn.ReLU(),
-            nn.MaxPool2d(2, 2, 0),       # [512, 4, 4]
-
-            nn.Conv2d(512, 512, 3, 1, 1), # [512, 4, 4]
-            nn.BatchNorm2d(512),
+            nn.MaxPool2d(2, 2, 0),       # [1024, 8, 8]
+            
+            nn.Conv2d(1024, 2048, 3, 1, 1), # [2048, 8, 8]
+            nn.BatchNorm2d(2048),
             nn.ReLU(),
-            nn.MaxPool2d(2, 2, 0),       # [512, 2, 2]
+            nn.MaxPool2d(2, 2, 0),       # [2048, 4, 4]
+            
+            nn.Conv2d(2048, 2048, 3, 1, 1), # [2048, 4, 4]
+            nn.BatchNorm2d(2048),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2, 0),       # [2048, 2, 2]
         )
         self.fc = nn.Sequential(
-            nn.Linear(512*2*2, 1024),
+            nn.Linear(2048*2*2, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
             nn.Dropout(0.3),
@@ -225,10 +226,11 @@ class Ensemble(nn.Module):
         self.output = None
         self.output_dim = 0
         return output
+
 # %% [markdown]
 # ### Configurations
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T09:50:17.062656Z","iopub.execute_input":"2023-03-17T09:50:17.063297Z","iopub.status.idle":"2023-03-17T09:50:19.645161Z","shell.execute_reply.started":"2023-03-17T09:50:17.063236Z","shell.execute_reply":"2023-03-17T09:50:19.644042Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.744070Z","iopub.execute_input":"2023-03-20T03:01:21.745153Z","iopub.status.idle":"2023-03-20T03:01:23.994961Z","shell.execute_reply.started":"2023-03-20T03:01:21.745114Z","shell.execute_reply":"2023-03-20T03:01:23.993924Z"}}
 # "cuda" only when GPUs are available.
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -238,17 +240,17 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # 1) CNN model
     
-# model = Classifier().to(device)
+model = Classifier().to(device)
 # print(model)
 
     # 2) alexnet model
 
-# Alexnet_Model = models.alexnet(pretrained=False).to(device)
+# model = models.alexnet(pretrained=False).to(device)
 # print(model)
 
     # 3) vgg16
 
-model = models.vgg16(weights=None).to(device)
+# model = models.vgg16(weights=None).to(device)
 # print(model)
 
     #4) models
@@ -260,10 +262,10 @@ model_num = 3
 ensemble=True
 
 # The number of batch size.
-batch_size = 32
+batch_size = 64
 
 # The number of training epochs.
-n_epochs = 15
+n_epochs = 10
 
 # If no improvement in 'patience' epochs, early stop.
 patience = 300
@@ -285,11 +287,18 @@ criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 # Initialize optimizer, you may fine-tune some hyperparameters such as learning rate on your own.
 optimizer = torch.optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
 
-trainPath = "./train"
-validPath = "./valid"
-testPath = "./test"
+trainPath = "/kaggle/input/ml2023spring-hw3/train"  # or "./train" 
+validPath = "/kaggle/input/ml2023spring-hw3/valid" # or "./valid"
+testPath = "/kaggle/input/ml2023spring-hw3/test" # or "./test"
+
 # %% [markdown]
 # ### Dataloader
+# 
+
+# %% [code] {"execution":{"iopub.status.busy":"2023-03-20T03:01:23.996646Z","iopub.execute_input":"2023-03-20T03:01:23.997018Z","iopub.status.idle":"2023-03-20T03:01:24.515874Z","shell.execute_reply.started":"2023-03-20T03:01:23.996978Z","shell.execute_reply":"2023-03-20T03:01:24.514627Z"}}
+# Construct train and valid datasets.
+# The argument "loader" tells how torchvision reads the data.
+# shuffle valid and train data
 trainfiles = sorted([os.path.join(trainPath,x) for x in os.listdir(trainPath) if x.endswith(".jpg")])
 validFiles = sorted([os.path.join(validPath,x) for x in os.listdir(validPath) if x.endswith(".jpg")])
 testFiles = sorted([os.path.join(testPath,x) for x in os.listdir(testPath) if x.endswith(".jpg")])
@@ -306,14 +315,11 @@ for _ in range(model_num):
     valid_set = FoodDataset(valid_data, tfm=test_tfm)
     valid_loaders.append(DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True))
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T09:50:19.647146Z","iopub.execute_input":"2023-03-17T09:50:19.647503Z","iopub.status.idle":"2023-03-17T09:50:19.684114Z","shell.execute_reply.started":"2023-03-17T09:50:19.647463Z","shell.execute_reply":"2023-03-17T09:50:19.683127Z"}}
-# Construct train and valid datasets.
-# The argument "loader" tells how torchvision reads the data.
 
 # %% [markdown]
 # ### Start Training
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T09:50:19.688084Z","iopub.execute_input":"2023-03-17T09:50:19.688396Z","iopub.status.idle":"2023-03-17T10:19:41.980137Z","shell.execute_reply.started":"2023-03-17T09:50:19.688367Z","shell.execute_reply":"2023-03-17T10:19:41.978505Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:24.520000Z","iopub.execute_input":"2023-03-20T03:01:24.520293Z","iopub.status.idle":"2023-03-20T03:01:40.501271Z","shell.execute_reply.started":"2023-03-20T03:01:24.520263Z","shell.execute_reply":"2023-03-20T03:01:40.499471Z"}}
 # Initialize trackers, these are not parameters and should not be changed
 stale = 0
 best_acc = 0
@@ -330,7 +336,10 @@ for epoch in range(n_epochs):
     # These are used to record cerain train_loader information in training.
     all_train_loss = []
     all_train_accs = []
-    for train_loader in train_loaders:
+    all_valid_loss = []
+    all_valid_accs = []
+    assert len(train_loaders) == len(valid_loaders)
+    for train_loader, valid_loader in zip(train_loaders, valid_loaders):
         # These are used to record cerain train_loader information in training.
         train_loss = []
         train_accs = []
@@ -375,64 +384,52 @@ for epoch in range(n_epochs):
                 train_loss.append(loss.item())
                 train_accs.append(acc)
         
-        train_loss = sum(train_loss) / len(train_loss)
-        train_acc = sum(train_accs) / len(train_accs)
-        all_train_loss.append(train_loss)
-        all_train_accs.append(train_acc)
+            train_loss = sum(train_loss) / len(train_loss)
+            train_acc = sum(train_accs) / len(train_accs)
+            all_train_loss.append(train_loss)
+            all_train_accs.append(train_acc)
+
+            model.eval()
+
+            valid_loss = []
+            valid_accs = []
+            # Iterate the validation set by batches.
+            for batch in tqdm(valid_loader):
+
+                # A batch consists of image data and corresponding labels.
+                imgs, labels = batch
+                #imgs = imgs.half()
+
+                # We don't need gradient in validation.
+                # Using torch.no_grad() accelerates the forward process.
+                with torch.no_grad():
+                    logits = model(imgs.to(device))
+
+                # We can still compute the loss (but not the gradient).
+                loss = criterion(logits, labels.to(device))
+
+                # Compute the accuracy for current batch.
+                acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+
+                # Record the loss and accuracy.
+                valid_loss.append(loss.item())
+                valid_accs.append(acc)
+            #break
+
+            # The average loss and accuracy for entire validation set is the average of the recorded values.
+            valid_loss = sum(valid_loss) / len(valid_loss)
+            valid_acc = sum(valid_accs) / len(valid_accs)
+            all_valid_loss.append(valid_loss)
+            all_valid_accs.append(valid_acc)
+        
 
     train_loss = sum(all_train_loss) / len(all_train_loss)
     train_acc = sum(all_train_accs) / len(all_train_accs)
+    valid_loss = sum(all_valid_loss) / len(all_valid_loss)
+    valid_acc = sum(all_train_accs) / len(all_train_accs)
 
     # Print the information.
     print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
-
-    # ---------- Validation ----------
-    # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
-    model.eval()
-
-    # These are used to record information in validation.
-    all_valid_loss = []
-    all_valid_accs = []
-
-    for valid_loader in valid_loaders:
-        valid_loss = []
-        valid_accs = []
-        # Iterate the validation set by batches.
-        for batch in tqdm(valid_loader):
-
-            # A batch consists of image data and corresponding labels.
-            imgs, labels = batch
-            #imgs = imgs.half()
-
-            # We don't need gradient in validation.
-            # Using torch.no_grad() accelerates the forward process.
-            with torch.no_grad():
-                logits = model(imgs.to(device))
-
-            # We can still compute the loss (but not the gradient).
-            loss = criterion(logits, labels.to(device))
-
-            # Compute the accuracy for current batch.
-            acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
-
-            # Record the loss and accuracy.
-            valid_loss.append(loss.item())
-            valid_accs.append(acc)
-        #break
-
-        # The average loss and accuracy for entire validation set is the average of the recorded values.
-        valid_loss = sum(valid_loss) / len(valid_loss)
-        valid_acc = sum(valid_accs) / len(valid_accs)
-        all_valid_loss.append(valid_loss)
-        all_valid_accs.append(valid_acc)
-    
-    valid_loss = sum(all_valid_loss) / len(all_valid_loss)
-    valid_acc = sum(all_valid_accs) / len(all_valid_accs)
-
-
-    # Print the information.
-    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
-
 
     # update logs
     if valid_acc > best_acc:
@@ -458,7 +455,7 @@ for epoch in range(n_epochs):
 # %% [markdown]
 # ### Dataloader for test
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T10:19:41.981284Z","iopub.status.idle":"2023-03-17T10:19:41.984516Z","shell.execute_reply.started":"2023-03-17T10:19:41.984311Z","shell.execute_reply":"2023-03-17T10:19:41.984334Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:40.502636Z","iopub.status.idle":"2023-03-20T03:01:40.503411Z","shell.execute_reply.started":"2023-03-20T03:01:40.503145Z","shell.execute_reply":"2023-03-20T03:01:40.503173Z"}}
 # Construct test datasets.
 # The argument "loader" tells how torchvision reads the data.
 test_loaders = []
@@ -469,11 +466,10 @@ for index in range(model_num):
         test_set = FoodDataset(testFiles, tfm=train_tfm)
     test_loaders.append(DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True))
 
-
 # %% [markdown]
 # ### Testing and generate prediction CSV
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T10:19:41.985900Z","iopub.status.idle":"2023-03-17T10:19:41.986613Z","shell.execute_reply.started":"2023-03-17T10:19:41.986334Z","shell.execute_reply":"2023-03-17T10:19:41.986375Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:40.504856Z","iopub.status.idle":"2023-03-20T03:01:40.505652Z","shell.execute_reply.started":"2023-03-20T03:01:40.505373Z","shell.execute_reply":"2023-03-20T03:01:40.505400Z"}}
 model_best = model
 model_best.load_state_dict(torch.load(f"{_exp_name}_best.ckpt"))
 model_best.eval()
@@ -491,7 +487,7 @@ with torch.no_grad():
             assert len(one_prediction) == len(prediction)
             prediction = [ ( prediction[index] + ( (1-TTA_ratio) / (model_num-1) ) * one_prediction[index] ) for index in range(len(one_prediction))]
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-17T10:19:41.988131Z","iopub.status.idle":"2023-03-17T10:19:41.989009Z","shell.execute_reply.started":"2023-03-17T10:19:41.988730Z","shell.execute_reply":"2023-03-17T10:19:41.988757Z"}}
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:40.507032Z","iopub.status.idle":"2023-03-20T03:01:40.507795Z","shell.execute_reply.started":"2023-03-20T03:01:40.507533Z","shell.execute_reply":"2023-03-20T03:01:40.507560Z"}}
 #create test csv
 def pad4(i):
     return "0"*(4-len(str(i)))+str(i)
