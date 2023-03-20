@@ -221,7 +221,7 @@ class Classifier(nn.Module):
 #         RNN
         self.rnn = nn.RNN(input_dim, hidden_dim, hidden_layers, batch_first=True)
 #         LSTM
-        self.lstm = nn.LSTM(input_dim, hidden_dim, hidden_layers, bidirectional=True, batch_first=True)
+        self.lstm = nn.LSTM(input_dim, hidden_dim, hidden_layers, dropout=0.2, bidirectional=True, batch_first=True)
         self.fc = nn.Linear(2*hidden_dim, output_dim)
     def forward(self, x):
 #         DNN
@@ -229,9 +229,8 @@ class Classifier(nn.Module):
 #         return x
 #         RNN
 #         print(x.shape)
-        h0 = torch.zeros(2*self.hidden_layers, self.hidden_dim).to(device)
 #         print(h0.shape)
-        out, _ = self.lstm(x)
+        out, (h_m, _) = self.lstm(x)
         out = self.fc(out)
         
 #         print(out)
@@ -244,21 +243,21 @@ class Classifier(nn.Module):
 # %% [code] {"id":"iIHn79Iav1ri","vscode":{"languageId":"python"},"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-16T14:50:41.897473Z","iopub.execute_input":"2023-03-16T14:50:41.900395Z","iopub.status.idle":"2023-03-16T14:50:41.908938Z","shell.execute_reply.started":"2023-03-16T14:50:41.900352Z","shell.execute_reply":"2023-03-16T14:50:41.907881Z"}}
 # data prarameters
 concat_nframes = 31              # the number of frames to concat with, n must be odd (total 2k+1 = n frames)
-train_ratio = 0.75               # the ratio of data used for training, the rest will be used for validation
+train_ratio = 0.8               # the ratio of data used for training, the rest will be used for validation
 
 # training parameters
 seed = 10901036                        # random seed
-batch_size = 128                # batch size
+batch_size = 256                # batch size
 num_epoch = 10                   # the number of training epoch
-learning_rate = 1e-4         # learning rate
+learning_rate = 5e-4         # learning rate
 model_path = './model.ckpt'     # the path where the checkpoint will be saved
 
 # model parameters
 input_dim = 39 * concat_nframes # the input dim of the model, you should not change the value
-hidden_layers = 5               # the number of hidden layers
-hidden_dim = 512                # the hidden dim
+hidden_layers = 4               # the number of hidden layers
+hidden_dim = 1500                # the hidden dim
 
-reload_model = False        # reload model to do further epoch training   
+reload_model = True        # reload model to do further epoch training   
 
 # %% [markdown] {"id":"IIUFRgG5yoDn"}
 # # Dataloader
@@ -300,9 +299,14 @@ model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=
 if reload_model and os.path.exists(model_path):    
     print(f"[train] reload model parameters, model_path:{model_path}")
     model.load_state_dict(torch.load(model_path))
+else: 
+    print(f"[train] restart with a new model")
 
 criterion = nn.CrossEntropyLoss() 
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+print(f"[HW2 parameters] : epoch={num_epoch}\t batch={batch_size}\t model=LSTM\t lr={learning_rate}\t hidden_layers={hidden_layers}\t hidden_dim={hidden_dim}\t frames={concat_nframes}\t dropout=0.3")
+
 
 best_acc = 0.0
 for epoch in range(num_epoch):

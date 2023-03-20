@@ -250,7 +250,7 @@ train_ratio = 0.75               # the ratio of data used for training, the rest
 seed = 10901036                        # random seed
 batch_size = 128                # batch size
 num_epoch = 10                   # the number of training epoch
-learning_rate = 5e-4         # learning rate
+learning_rate = 1e-5         # learning rate
 model_path = './model.ckpt'     # the path where the checkpoint will be saved
 
 # model parameters
@@ -258,7 +258,7 @@ input_dim = 39 * concat_nframes # the input dim of the model, you should not cha
 hidden_layers = 5               # the number of hidden layers
 hidden_dim = 512                # the hidden dim
 
-reload_model = False        # reload model to do further epoch training   
+reload_model = True        # reload model to do further epoch training   
 
 # %% [markdown] {"id":"IIUFRgG5yoDn"}
 # # Dataloader
