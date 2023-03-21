@@ -190,14 +190,14 @@ class LibriDataset(Dataset):
 import torch.nn as nn
 
 class BasicBlock(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, dropout=0.3):
         super(BasicBlock, self).__init__()
 
         self.block = nn.Sequential(
             nn.Linear(input_dim, output_dim),
             nn.BatchNorm1d(output_dim),
             nn.ReLU(),
-            nn.Dropout(0.3)
+            nn.Dropout(dropout)
         )
 
     def forward(self, x):
@@ -206,7 +206,7 @@ class BasicBlock(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self, input_dim, output_dim=41, hidden_layers=1, hidden_dim=256):
+    def __init__(self, input_dim, output_dim=41, hidden_layers=1, hidden_dim=256, dropout=0.0):
         super(Classifier, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -221,7 +221,7 @@ class Classifier(nn.Module):
 #         RNN
         self.rnn = nn.RNN(input_dim, hidden_dim, hidden_layers, batch_first=True)
 #         LSTM
-        self.lstm = nn.LSTM(input_dim, hidden_dim, hidden_layers, dropout=0.2, bidirectional=True, batch_first=True)
+        self.lstm = nn.LSTM(input_dim, hidden_dim, hidden_layers, dropout=dropout, bidirectional=True, batch_first=True)
         self.fc = nn.Linear(2*hidden_dim, output_dim)
     def forward(self, x):
 #         DNN
@@ -258,6 +258,7 @@ hidden_layers = 4               # the number of hidden layers
 hidden_dim = 1500                # the hidden dim
 
 reload_model = True        # reload model to do further epoch training   
+dropout = 0.3              # dropout rate
 
 # %% [markdown] {"id":"IIUFRgG5yoDn"}
 # # Dataloader
@@ -294,7 +295,7 @@ val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
 # %% [code] {"id":"CdMWsBs7zzNs","outputId":"426e0a6c-02bd-4f59-e45c-b05e3f28965d","vscode":{"languageId":"python"},"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-16T14:54:46.347493Z","iopub.execute_input":"2023-03-16T14:54:46.347917Z","iopub.status.idle":"2023-03-16T14:54:53.144889Z","shell.execute_reply.started":"2023-03-16T14:54:46.347880Z","shell.execute_reply":"2023-03-16T14:54:53.143347Z"}}
 # create model, define a loss function, and optimizer
-model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim).to(device)
+model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim, dropout=dropout).to(device)
 
 if reload_model and os.path.exists(model_path):    
     print(f"[train] reload model parameters, model_path:{model_path}")
@@ -305,7 +306,7 @@ else:
 criterion = nn.CrossEntropyLoss() 
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-print(f"[HW2 parameters] : epoch={num_epoch}\t batch={batch_size}\t model=LSTM\t lr={learning_rate}\t hidden_layers={hidden_layers}\t hidden_dim={hidden_dim}\t frames={concat_nframes}\t dropout=0.3")
+print(f"[HW2 parameters] : epoch={num_epoch}\t batch={batch_size}\t model=LSTM\t lr={learning_rate}\t hidden_layers={hidden_layers}\t hidden_dim={hidden_dim}\t frames={concat_nframes}\t dropout={dropout}")
 
 
 best_acc = 0.0

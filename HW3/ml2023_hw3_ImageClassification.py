@@ -39,6 +39,7 @@ Notes: if the links are dead, you can download the data directly from Kaggle and
 # useful links
 # 1) https://huggingface.co/docs/accelerate/usage_guides/gradient_accumulation (gradient_accumulation)
 # 2) https://discuss.pytorch.org/t/combining-trained-models-in-pytorch/28383 (custom ensemble)
+# 3) https://pytorch.org/docs/stable/generated/torch.nn.ModuleList.html (nn.ModuleList)
 
 """# Import Packages"""
 
@@ -209,9 +210,8 @@ class Ensemble(nn.Module):
         # torch.nn.MaxPool2d(kernel_size, stride, padding)
         # input 維度 [3, 128, 128]
 
-    def forward(self, x_s):
-        assert len(x_s) == len(self.models)
-        for model , x in zip(self.models, x_s):
+    def forward(self, x):
+        for model in self.models:
             out = model(x)
             if(self.output_dim == 0):
                 self.output = out
@@ -240,7 +240,9 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # 1) CNN model
     
-model = Classifier().to(device)
+models = []
+model_name = "Classifier"
+model_Classifier = Classifier().to(device)
 # print(model)
 
     # 2) alexnet model
@@ -254,18 +256,15 @@ model = Classifier().to(device)
 # print(model)
 
     #4) models
-model_num = 3
+model_num = 5
 # models = nn.ModuleList([Classifier().to(device) for _ in range(model_num)])
 # model = Ensemble(models, len(models))
 
-# ensemble or not
-ensemble=True
-
 # The number of batch size.
-batch_size = 64
+batch_size = 128
 
 # The number of training epochs.
-n_epochs = 10
+n_epochs = 30
 
 # If no improvement in 'patience' epochs, early stop.
 patience = 300
@@ -285,11 +284,16 @@ label_smoothing = 0.5
 criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 
 # Initialize optimizer, you may fine-tune some hyperparameters such as learning rate on your own.
-optimizer = torch.optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
+lr = 0.003
+optimizer = torch.optim.Adam(model_Classifier.parameters(), lr=0.003, weight_decay=1e-5)
 
-trainPath = "/kaggle/input/ml2023spring-hw3/train"  # or "./train" 
-validPath = "/kaggle/input/ml2023spring-hw3/valid" # or "./valid"
-testPath = "/kaggle/input/ml2023spring-hw3/test" # or "./test"
+# trainPath = "/kaggle/input/ml2023spring-hw3/train"  # or "./train" 
+# validPath = "/kaggle/input/ml2023spring-hw3/valid" # or "./valid"
+# testPath = "/kaggle/input/ml2023spring-hw3/test" # or "./test"
+
+trainPath = "./train"
+validPath = "./valid"
+testPath = "./test"
 
 # %% [markdown]
 # ### Dataloader
@@ -314,7 +318,14 @@ for _ in range(model_num):
     train_loaders.append(DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True))
     valid_set = FoodDataset(valid_data, tfm=test_tfm)
     valid_loaders.append(DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True))
+    models.append(model_Classifier)
 
+# %% [markdown]
+# ### Ensemble model
+
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:24.520000Z","iopub.execute_input":"2023-03-20T03:01:24.520293Z","iopub.status.idle":"2023-03-20T03:01:40.501271Z","shell.execute_reply.started":"2023-03-20T03:01:24.520263Z","shell.execute_reply":"2023-03-20T03:01:40.499471Z"}}
+
+model_ensemble = Ensemble(nn.ModuleList(models), model_num)
 
 # %% [markdown]
 # ### Start Training
@@ -322,24 +333,20 @@ for _ in range(model_num):
 # %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:24.520000Z","iopub.execute_input":"2023-03-20T03:01:24.520293Z","iopub.status.idle":"2023-03-20T03:01:40.501271Z","shell.execute_reply.started":"2023-03-20T03:01:24.520263Z","shell.execute_reply":"2023-03-20T03:01:40.499471Z"}}
 # Initialize trackers, these are not parameters and should not be changed
 stale = 0
-best_acc = 0
-print(f"[HW3 parameters] : epoch={n_epochs}\t batch={batch_size}\t label_smoothing={label_smoothing}\t lr=0.003\t model=Classifier ensemble={ensemble}")
-model, optimizer, train_loaders, valid_loaders = accelerator.prepare(
-    model, optimizer, train_loaders, valid_loaders
+best_acc = [0 for _ in range(model_num)]
+print(f"[HW3 parameters] : epoch={n_epochs}\t batch={batch_size}\t label_smoothing={label_smoothing}\t lr={lr}\t model={model_name}\t model_num={model_num} TTA={TTA_ratio}")
+models, optimizer, train_loaders, valid_loaders = accelerator.prepare(
+    models, optimizer, train_loaders, valid_loaders
 )
 for epoch in range(n_epochs):
-
-    # ---------- Training ----------
-    # Make sure the model is in train mode before training.
-    model.train()
-
     # These are used to record cerain train_loader information in training.
-    all_train_loss = []
-    all_train_accs = []
-    all_valid_loss = []
-    all_valid_accs = []
+    index = 0
     assert len(train_loaders) == len(valid_loaders)
-    for train_loader, valid_loader in zip(train_loaders, valid_loaders):
+    for model, train_loader, valid_loader in zip(models, train_loaders, valid_loaders):
+        
+        # ---------- Training ----------
+        # Make sure the model is in train mode before training.
+        model.train()
         # These are used to record cerain train_loader information in training.
         train_loss = []
         train_accs = []
@@ -384,73 +391,61 @@ for epoch in range(n_epochs):
                 train_loss.append(loss.item())
                 train_accs.append(acc)
         
-            train_loss = sum(train_loss) / len(train_loss)
-            train_acc = sum(train_accs) / len(train_accs)
-            all_train_loss.append(train_loss)
-            all_train_accs.append(train_acc)
+        train_loss = sum(train_loss) / len(train_loss)
+        train_acc = sum(train_accs) / len(train_accs)
+        print(f"[ Train | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
 
-            model.eval()
+        # ----------------Validation-----------------
 
-            valid_loss = []
-            valid_accs = []
-            # Iterate the validation set by batches.
-            for batch in tqdm(valid_loader):
+        model.eval()
 
-                # A batch consists of image data and corresponding labels.
-                imgs, labels = batch
-                #imgs = imgs.half()
+        valid_loss = []
+        valid_accs = []
+        # Iterate the validation set by batches.
+        for batch in tqdm(valid_loader):
 
-                # We don't need gradient in validation.
-                # Using torch.no_grad() accelerates the forward process.
-                with torch.no_grad():
-                    logits = model(imgs.to(device))
+            # A batch consists of image data and corresponding labels.
+            imgs, labels = batch
+            #imgs = imgs.half()
 
-                # We can still compute the loss (but not the gradient).
-                loss = criterion(logits, labels.to(device))
+            # We don't need gradient in validation.
+            # Using torch.no_grad() accelerates the forward process.
+            with torch.no_grad():
+                logits = model(imgs.to(device))
 
-                # Compute the accuracy for current batch.
-                acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+            # We can still compute the loss (but not the gradient).
+            loss = criterion(logits, labels.to(device))
 
-                # Record the loss and accuracy.
-                valid_loss.append(loss.item())
-                valid_accs.append(acc)
+            # Compute the accuracy for current batch.
+            acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+
+            # Record the loss and accuracy.
+            valid_loss.append(loss.item())
+            valid_accs.append(acc)
             #break
 
-            # The average loss and accuracy for entire validation set is the average of the recorded values.
-            valid_loss = sum(valid_loss) / len(valid_loss)
-            valid_acc = sum(valid_accs) / len(valid_accs)
-            all_valid_loss.append(valid_loss)
-            all_valid_accs.append(valid_acc)
-        
+        # The average loss and accuracy for entire validation set is the average of the recorded values.
+        valid_loss = sum(valid_loss) / len(valid_loss)
+        valid_acc = sum(valid_accs) / len(valid_accs)
+        if valid_acc > best_acc[index]:
+            with open(f"./{_exp_name}_log.txt","a"):
+                print(f"[ Valid | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} => best")
+        else:
+            with open(f"./{_exp_name}_log.txt","a"):
+                print(f"[ Valid | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
-    train_loss = sum(all_train_loss) / len(all_train_loss)
-    train_acc = sum(all_train_accs) / len(all_train_accs)
-    valid_loss = sum(all_valid_loss) / len(all_valid_loss)
-    valid_acc = sum(all_train_accs) / len(all_train_accs)
-
-    # Print the information.
-    print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
-
-    # update logs
-    if valid_acc > best_acc:
-        with open(f"./{_exp_name}_log.txt","a"):
-            print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
-    else:
-        with open(f"./{_exp_name}_log.txt","a"):
-            print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
-
-
-    # save models
-    if valid_acc > best_acc:
-        print(f"Best model found at epoch {epoch+1}, saving model")
-        torch.save(model.state_dict(), f"{_exp_name}_best.ckpt") # only save best to prevent output memory exceed error
-        best_acc = valid_acc
-        stale = 0
-    else:
-        stale = stale + 1
-        if stale > patience:
-            print(f"No improvment {patience} consecutive epochs, early stopping")
-            break
+        # save models
+        if valid_acc > best_acc[index]:
+            print(f"Best model found at epoch {epoch+1}, saving model_{index + 1}")
+            torch.save(model.state_dict(), f"{_exp_name}_model{index + 1}_best.ckpt") # only save best to prevent output memory exceed error
+            best_acc[index] = valid_acc
+            stale = 0
+        else:
+            stale = stale + 1
+            if stale > patience:
+                print(f"No improvment {patience} consecutive epochs, early stopping")
+                break
+        index = index + 1
 
 # %% [markdown]
 # ### Dataloader for test
@@ -459,7 +454,8 @@ for epoch in range(n_epochs):
 # Construct test datasets.
 # The argument "loader" tells how torchvision reads the data.
 test_loaders = []
-for index in range(model_num):
+test_loader_num = 2
+for index in range(test_loader_num):
     if index == 0:
         test_set = FoodDataset(testFiles, tfm=test_tfm)
     else:
@@ -470,22 +466,29 @@ for index in range(model_num):
 # ### Testing and generate prediction CSV
 
 # %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:40.504856Z","iopub.status.idle":"2023-03-20T03:01:40.505652Z","shell.execute_reply.started":"2023-03-20T03:01:40.505373Z","shell.execute_reply":"2023-03-20T03:01:40.505400Z"}}
-model_best = model
-model_best.load_state_dict(torch.load(f"{_exp_name}_best.ckpt"))
-model_best.eval()
+
+model_bests = []
+
+for index in range(model_num):
+    model_best = model_Classifier
+    model_best.load_state_dict(torch.load(f"{_exp_name}_model{index + 1}_best.ckpt"))
+    model_bests.append(model_best)
+
+model_ensemble = Ensemble(nn.ModuleList(model_bests), model_num)
+model_ensemble.eval()
 prediction = []
 with torch.no_grad():
     for index, test_loader in enumerate(test_loaders):
         one_prediction = []
         for data,_ in tqdm(test_loader):
-            test_pred = model_best(data.to(device))
+            test_pred = model_ensemble(data.to(device))
             test_label = np.argmax(test_pred.cpu().data.numpy(), axis=1)
             one_prediction = one_prediction + test_label.squeeze().tolist()
         if index == 0:
             prediction = [ ( TTA_ratio * prediction ) for prediction in one_prediction ]
         else:
             assert len(one_prediction) == len(prediction)
-            prediction = [ ( prediction[index] + ( (1-TTA_ratio) / (model_num-1) ) * one_prediction[index] ) for index in range(len(one_prediction))]
+            prediction = [ ( prediction[index] + (1-TTA_ratio) * one_prediction[index] ) for index in range(len(one_prediction))]
 
 # %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:40.507032Z","iopub.status.idle":"2023-03-20T03:01:40.507795Z","shell.execute_reply.started":"2023-03-20T03:01:40.507533Z","shell.execute_reply":"2023-03-20T03:01:40.507560Z"}}
 #create test csv
