@@ -254,8 +254,8 @@ model_path = './model.ckpt'     # the path where the checkpoint will be saved
 
 # model parameters
 input_dim = 39 * concat_nframes # the input dim of the model, you should not change the value
-hidden_layers = 4               # the number of hidden layers
-hidden_dim = 1500                # the hidden dim
+hidden_layers = 3               # the number of hidden layers
+hidden_dim = 2048                # the hidden dim
 
 reload_model = True        # reload model to do further epoch training   
 dropout = 0.3              # dropout rate
@@ -408,3 +408,5 @@ with open('prediction.csv', 'w') as f:
     f.write('Id,Class\n') 
     for i, y in enumerate(pred):
         f.write('{},{}\n'.format(i, y))
+
+print(f"prediction csv saved")

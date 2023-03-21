@@ -190,14 +190,14 @@ class LibriDataset(Dataset):
 import torch.nn as nn
 
 class BasicBlock(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, dropout=0.3):
         super(BasicBlock, self).__init__()
 
         self.block = nn.Sequential(
             nn.Linear(input_dim, output_dim),
             nn.BatchNorm1d(output_dim),
             nn.ReLU(),
-            nn.Dropout(0.3)
+            nn.Dropout(dropout)
         )
 
     def forward(self, x):
@@ -206,7 +206,7 @@ class BasicBlock(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self, input_dim, output_dim=41, hidden_layers=1, hidden_dim=256):
+    def __init__(self, input_dim, output_dim=41, hidden_layers=1, hidden_dim=256, dropout=0.0):
         super(Classifier, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -221,7 +221,7 @@ class Classifier(nn.Module):
 #         RNN
         self.rnn = nn.RNN(input_dim, hidden_dim, hidden_layers, batch_first=True)
 #         LSTM
-        self.lstm = nn.LSTM(input_dim, hidden_dim, hidden_layers, bidirectional=True, batch_first=True)
+        self.lstm = nn.LSTM(input_dim, hidden_dim, hidden_layers, dropout=dropout, bidirectional=True, batch_first=True)
         self.fc = nn.Linear(2*hidden_dim, output_dim)
     def forward(self, x):
 #         DNN
@@ -229,9 +229,8 @@ class Classifier(nn.Module):
 #         return x
 #         RNN
 #         print(x.shape)
-        h0 = torch.zeros(2*self.hidden_layers, self.hidden_dim).to(device)
 #         print(h0.shape)
-        out, _ = self.lstm(x)
+        out, (h_m, _) = self.lstm(x)
         out = self.fc(out)
         
 #         print(out)
@@ -244,21 +243,22 @@ class Classifier(nn.Module):
 # %% [code] {"id":"iIHn79Iav1ri","vscode":{"languageId":"python"},"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-16T14:50:41.897473Z","iopub.execute_input":"2023-03-16T14:50:41.900395Z","iopub.status.idle":"2023-03-16T14:50:41.908938Z","shell.execute_reply.started":"2023-03-16T14:50:41.900352Z","shell.execute_reply":"2023-03-16T14:50:41.907881Z"}}
 # data prarameters
 concat_nframes = 31              # the number of frames to concat with, n must be odd (total 2k+1 = n frames)
-train_ratio = 0.75               # the ratio of data used for training, the rest will be used for validation
+train_ratio = 0.8               # the ratio of data used for training, the rest will be used for validation
 
 # training parameters
 seed = 10901036                        # random seed
-batch_size = 128                # batch size
+batch_size = 256                # batch size
 num_epoch = 10                   # the number of training epoch
-learning_rate = 1e-5         # learning rate
+learning_rate = 1e-3         # learning rate
 model_path = './model.ckpt'     # the path where the checkpoint will be saved
 
 # model parameters
 input_dim = 39 * concat_nframes # the input dim of the model, you should not change the value
-hidden_layers = 5               # the number of hidden layers
-hidden_dim = 512                # the hidden dim
+hidden_layers = 2               # the number of hidden layers
+hidden_dim = 2200                # the hidden dim
 
-reload_model = True        # reload model to do further epoch training   
+reload_model = False        # reload model to do further epoch training   
+dropout = 0.3              # dropout rate
 
 # %% [markdown] {"id":"IIUFRgG5yoDn"}
 # # Dataloader
@@ -295,14 +295,19 @@ val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
 # %% [code] {"id":"CdMWsBs7zzNs","outputId":"426e0a6c-02bd-4f59-e45c-b05e3f28965d","vscode":{"languageId":"python"},"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-16T14:54:46.347493Z","iopub.execute_input":"2023-03-16T14:54:46.347917Z","iopub.status.idle":"2023-03-16T14:54:53.144889Z","shell.execute_reply.started":"2023-03-16T14:54:46.347880Z","shell.execute_reply":"2023-03-16T14:54:53.143347Z"}}
 # create model, define a loss function, and optimizer
-model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim).to(device)
+model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim, dropout=dropout).to(device)
 
 if reload_model and os.path.exists(model_path):    
     print(f"[train] reload model parameters, model_path:{model_path}")
     model.load_state_dict(torch.load(model_path))
+else: 
+    print(f"[train] restart with a new model")
 
 criterion = nn.CrossEntropyLoss() 
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+print(f"[HW2 parameters] : epoch={num_epoch}\t batch={batch_size}\t model=LSTM\t lr={learning_rate}\t hidden_layers={hidden_layers}\t hidden_dim={hidden_dim}\t frames={concat_nframes}\t dropout={dropout}")
+
 
 best_acc = 0.0
 for epoch in range(num_epoch):
@@ -367,7 +372,6 @@ gc.collect()
 
 # %% [code] {"id":"VOG1Ou0PGrhc","outputId":"3373d328-bb42-48ec-92f2-e2e935c3344c","vscode":{"languageId":"python"},"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-16T14:51:20.517846Z","iopub.status.idle":"2023-03-16T14:51:20.518364Z","shell.execute_reply.started":"2023-03-16T14:51:20.518075Z","shell.execute_reply":"2023-03-16T14:51:20.518097Z"}}
 # load data
-
 test_X = preprocess_data(split='test', feat_dir=feature_dir, phone_path=libriphone_path, concat_nframes=concat_nframes)
 test_set = LibriDataset(test_X, None)
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
@@ -404,3 +408,5 @@ with open('prediction.csv', 'w') as f:
     f.write('Id,Class\n') 
     for i, y in enumerate(pred):
         f.write('{},{}\n'.format(i, y))
+
+print(f"prediction csv saved")
