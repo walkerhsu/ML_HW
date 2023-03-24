@@ -270,8 +270,8 @@ train_ratio = 0.8               # the ratio of data used for training, the rest 
 # training parameters
 seed = 10901036                        # random seed
 batch_size = 512                # batch size
-num_epoch = 10                   # the number of training epoch
-learning_rate = 5e-4         # learning rate
+num_epoch = 2                   # the number of training epoch
+learning_rate = 1e-5         # learning rate
 model_path = './model.ckpt'     # the path where the checkpoint will be saved
 
 # model parameters
@@ -279,8 +279,8 @@ input_dim = 39 * concat_nframes # the input dim of the model, you should not cha
 hidden_layers = 2               # the number of hidden layers
 hidden_dim = 1024                # the hidden dim
 
-reload_model = False        # reload model to do further epoch training   
-dropout = 0.3              # dropout rate
+reload_model = True        # reload model to do further epoch training   
+dropout = 0.4              # dropout rate
 
 # %% [markdown] {"id":"IIUFRgG5yoDn"}
 # # Dataloader
@@ -293,10 +293,10 @@ same_seeds(seed)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'DEVICE: {device}')
 
-# feature_dir = './libriphone/feat'
-feature_dir = "/kaggle/input/ml2023spring-hw2/libriphone/feat"
-# libriphone_path = './libriphone'
-libriphone_path = "/kaggle/input/ml2023spring-hw2/libriphone"
+feature_dir = './libriphone/feat'
+# feature_dir = "/kaggle/input/ml2023spring-hw2/libriphone/feat"
+libriphone_path = './libriphone'
+# libriphone_path = "/kaggle/input/ml2023spring-hw2/libriphone"
 
 # preprocess data
 train_X, train_y = preprocess_data(split='train', feat_dir=feature_dir, phone_path=libriphone_path, concat_nframes=concat_nframes, train_ratio=train_ratio)

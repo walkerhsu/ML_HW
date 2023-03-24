@@ -40,6 +40,9 @@ Notes: if the links are dead, you can download the data directly from Kaggle and
 # 1) https://huggingface.co/docs/accelerate/usage_guides/gradient_accumulation (gradient_accumulation)
 # 2) https://discuss.pytorch.org/t/combining-trained-models-in-pytorch/28383 (custom ensemble)
 # 3) https://pytorch.org/docs/stable/generated/torch.nn.ModuleList.html (nn.ModuleList)
+# 4) https://stackoverflow.com/questions/55810665/changing-input-dimension-for-alexnet (change the model's layer)
+# 5) https://blog.paperspace.com/popular-deep-learning-architectures-alexnet-vgg-googlenet/ (hyperparameters for each model)
+# 6) https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ReduceLROnPlateau.html#torch.optim.lr_scheduler.ReduceLROnPlateau(scheduler)
 
 """# Import Packages"""
 
@@ -72,6 +75,7 @@ from torchvision import models
 from tqdm.auto import tqdm
 import random
 from accelerate import Accelerator
+import ttach
 
 # %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.637983Z","iopub.execute_input":"2023-03-20T03:01:21.639713Z","iopub.status.idle":"2023-03-20T03:01:21.645937Z","shell.execute_reply.started":"2023-03-20T03:01:21.639668Z","shell.execute_reply":"2023-03-20T03:01:21.644841Z"}}
 myseed = 6666  # set a random seed for reproducibility
@@ -100,8 +104,12 @@ train_tfm = transforms.Compose([
     transforms.Resize((128, 128)),
     # You may add some transforms here.
     transforms.ColorJitter(brightness=0.15, contrast=0.15, hue=0.15, saturation=0.15),
-    transforms.RandomPerspective(distortion_scale=0.3, p=0.3),
     transforms.ElasticTransform(),
+    transforms.RandomPerspective(distortion_scale=0.3, p=0.3),
+    transforms.RandomRotation(degrees=(0, 180)), 
+    transforms.RandomHorizontalFlip(p=1),   
+    transforms.RandomVerticalFlip(p=1),     
+    transforms.RandomInvert(),
     transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 2.0)),
     # ToTensor() should be the last one of the transforms.
     transforms.ToTensor(),
@@ -200,74 +208,42 @@ class Classifier(nn.Module):
         return self.fc(out)
 
 class Ensemble(nn.Module):
-    def __init__(self, models, model_num):
+    def __init__(self, models, model_num, weight, output_dim=11):
+        assert len(models) == model_num and len(weight) == model_num
         super(Ensemble, self).__init__()
         self.models = models
         self.model_num = model_num
-        self.output = None
-        self.output_dim = 0
+        self.output = []
+        self.output_dim = output_dim
+        self.weight = weight
         # torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
         # torch.nn.MaxPool2d(kernel_size, stride, padding)
         # input 維度 [3, 128, 128]
 
     def forward(self, x):
-        for model in self.models:
+        for index, model in enumerate(self.models):
             out = model(x)
-            if(self.output_dim == 0):
-                self.output = out
+            if index == 0:
+                self.output = [ [ float(out_element * self.weight[index]) for out_element in out_element_list ] for out_element_list in out]
             else:
-                self.output = torch.cat((self.output, out), dim=1)
-            self.output_dim = self.output_dim + 11
-        self.fc = nn.Sequential(
-            nn.ReLU(),
-            nn.Linear(self.output_dim, 11)
-        ).to(device)
-        output = self.fc(self.output)
-        self.output = None
-        self.output_dim = 0
-        return output
+                self.output = [ [ float(self.output[index1][index2] + out_element * self.weight[index]) for index2, out_element in enumerate(out_element_list) ]
+                                    for index1, out_element_list in enumerate(out)]
+        output = self.output
+
+        self.output = []
+        return torch.tensor(output)
 
 # %% [markdown]
 # ### Configurations
 
-# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.744070Z","iopub.execute_input":"2023-03-20T03:01:21.745153Z","iopub.status.idle":"2023-03-20T03:01:23.994961Z","shell.execute_reply.started":"2023-03-20T03:01:21.745114Z","shell.execute_reply":"2023-03-20T03:01:23.993924Z"}}
-# "cuda" only when GPUs are available.
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-# Initialize a model, and put it on the device specified.
-
-# Initialize a model, and put it on the device specified.
-
-    # 1) CNN model
-    
-models = []
-model_name = "Classifier"
-model_Classifier = Classifier().to(device)
-# print(model)
-
-    # 2) alexnet model
-
-# model = models.alexnet(pretrained=False).to(device)
-# print(model)
-
-    # 3) vgg16
-
-# model = models.vgg16(weights=None).to(device)
-# print(model)
-
-    #4) models
-model_num = 5
-# models = nn.ModuleList([Classifier().to(device) for _ in range(model_num)])
-# model = Ensemble(models, len(models))
-
 # The number of batch size.
-batch_size = 128
+batch_size = 16
 
 # The number of training epochs.
-n_epochs = 30
+n_epochs = 1000
 
-# If no improvement in 'patience' epochs, early stop.
-patience = 300
+# If no improvement in 'patience' epochs, lower learning rate.
+patience = 5
 
 #train_valid_split rate
 train_valid_split = 0.8
@@ -275,17 +251,90 @@ train_valid_split = 0.8
 #TTA ratio
 TTA_ratio = 0.8
 
+#reload model
+reload_model=True
+
+#retrain model
+retrain_model = True
+
 # gradient_accumulation_steps
-gradient_accumulation_steps = 2
+gradient_accumulation_steps = 5
 accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps)
 
 # For the classification task, we use cross-entropy as the measurement of performance.
 label_smoothing = 0.5
 criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 
-# Initialize optimizer, you may fine-tune some hyperparameters such as learning rate on your own.
-lr = 0.003
-optimizer = torch.optim.Adam(model_Classifier.parameters(), lr=0.003, weight_decay=1e-5)
+# %% [markdown]
+# ### Models
+
+# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.744070Z","iopub.execute_input":"2023-03-20T03:01:21.745153Z","iopub.status.idle":"2023-03-20T03:01:23.994961Z","shell.execute_reply.started":"2023-03-20T03:01:21.745114Z","shell.execute_reply":"2023-03-20T03:01:23.993924Z"}}
+# "cuda" only when GPUs are available.
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Initialize a model, and put it on the device specified.
+model_lists = []
+
+# Initialize optimizer
+
+output_dim = 11
+lr = []
+optimizers = []
+schedules = []
+threshold = 1e-3
+
+    # 1) CNN model
+# lr_Classifier = 0.001
+# lr.append(lr_Classifier)
+# model_Classifier = Classifier().to(device)
+# model_lists.append(["Classifier", model_Classifier])
+# optimizers.append(torch.optim.Adam(model_Classifier.parameters(), lr=lr_Classifier, weight_decay=1e-5))
+# schedules.append(torch.optim.lr_scheduler.ReduceLROnPlateau(optimizers[-1], mode="min", factor=0.1, patience=patience, threshold=threshold, verbose=True))
+
+    # 2) alexnet model
+# lr_Alexnet = 0.001
+# lr.append(lr_Alexnet)
+# model_Alexnet = models.alexnet(weights=None).to(device)
+# model_Alexnet.classifier[6] = nn.Linear(4096, output_dim).to(device)
+# model_lists.append(["Alexnet", model_Alexnet])
+# optimizers.append(torch.optim.SGD(model_Alexnet.parameters(), momentum=0.9, lr=lr_Alexnet, weight_decay=5e-4))
+# schedules.append(torch.optim.lr_scheduler.ReduceLROnPlateau(optimizers[-1], mode="min", factor=0.1, patience=patience, threshold=threshold, verbose=True))
+
+#     # 3) vgg16
+# lr_VGG = 0.001
+# lr.append(lr_VGG)
+# model_VGG = models.vgg16(weights=None).to(device)
+# model_VGG.classifier[6] = nn.Linear(4096, output_dim).to(device)
+# model_lists.append(["VGG", model_VGG])
+# optimizers.append(torch.optim.SGD(model_VGG.parameters(), momentum=0.9, lr=lr_VGG, weight_decay=1e-5))
+# schedules.append(torch.optim.lr_scheduler.ReduceLROnPlateau(optimizers[-1], mode="min", factor=0.1, patience=patience, threshold=threshold, verbose=True))
+
+    # 4) RESNET
+lr_RESNET = 0.01
+lr.append(lr_RESNET)
+model_RESNET = models.resnet50(weights=None).to(device)
+model_RESNET.fc = nn.Linear(2048, output_dim).to(device)
+model_lists.append(["RESNET", model_RESNET])
+optimizers.append(torch.optim.SGD(model_RESNET.parameters(), momentum=0.9, lr=lr_RESNET, weight_decay=1e-5))
+schedules.append(torch.optim.lr_scheduler.ReduceLROnPlateau(optimizers[-1], mode="min", factor=0.1, patience=patience, threshold=threshold, verbose=True))
+
+    # 5) squeezenet1_0
+# model_Squeezenet = models.squeezenet1_0(weights=None).to(device)
+# model_Alexnet.classifier[1] = nn.Conv2d(512, output_dim, kernel_size=(1, 1), stride=(1, 1))
+# model_lists.append(["Squeezenet", model_Squeezenet])
+# optimizers.append(torch.optim.Adam(model_Squeezenet.parameters(), lr=0.003, weight_decay=1e-5))
+    # print all models
+model_num = len(model_lists)
+for index, model_list in enumerate(model_lists):
+    print(f"mode {index+1}: {model_list[0]}")
+
+# %% [markdown]
+# ### Dataloader
+
+# %% [code] {"execution":{"iopub.status.busy":"2023-03-20T03:01:23.996646Z","iopub.execute_input":"2023-03-20T03:01:23.997018Z","iopub.status.idle":"2023-03-20T03:01:24.515874Z","shell.execute_reply.started":"2023-03-20T03:01:23.996978Z","shell.execute_reply":"2023-03-20T03:01:24.514627Z"}}
+
+# Construct train and valid datasets.
+# The argument "loader" tells how torchvision reads the data.
 
 # trainPath = "/kaggle/input/ml2023spring-hw3/train"  # or "./train" 
 # validPath = "/kaggle/input/ml2023spring-hw3/valid" # or "./valid"
@@ -294,158 +343,159 @@ optimizer = torch.optim.Adam(model_Classifier.parameters(), lr=0.003, weight_dec
 trainPath = "./train"
 validPath = "./valid"
 testPath = "./test"
+modelPath = [(f"{_exp_name}_model{index + 1}_best.ckpt") for index in range(model_num)]
 
-# %% [markdown]
-# ### Dataloader
-# 
-
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-20T03:01:23.996646Z","iopub.execute_input":"2023-03-20T03:01:23.997018Z","iopub.status.idle":"2023-03-20T03:01:24.515874Z","shell.execute_reply.started":"2023-03-20T03:01:23.996978Z","shell.execute_reply":"2023-03-20T03:01:24.514627Z"}}
-# Construct train and valid datasets.
-# The argument "loader" tells how torchvision reads the data.
-# shuffle valid and train data
 trainfiles = sorted([os.path.join(trainPath,x) for x in os.listdir(trainPath) if x.endswith(".jpg")])
 validFiles = sorted([os.path.join(validPath,x) for x in os.listdir(validPath) if x.endswith(".jpg")])
 testFiles = sorted([os.path.join(testPath,x) for x in os.listdir(testPath) if x.endswith(".jpg")])
-train_valid_files = trainfiles + validFiles
+train_set = FoodDataset(trainfiles, tfm=train_tfm)
+valid_set = FoodDataset(validFiles, tfm=test_tfm)
+# train_valid_files = trainfiles + validFiles
 train_loaders = []
 valid_loaders = []
 for _ in range(model_num):
-    train_data_num = math.floor(len(train_valid_files)*train_valid_split)
-    random.shuffle(train_valid_files)
-    train_data = train_valid_files[ : train_data_num ]
-    valid_data = train_valid_files[ train_data_num : ]
-    train_set = FoodDataset(train_data, tfm=train_tfm)
+    # train_data_num = math.floor(len(train_valid_files)*train_valid_split)
+    # random.shuffle(train_valid_files)
+    # train_data = train_valid_files[ : train_data_num ]
+    # valid_data = train_valid_files[ train_data_num : ]
+    # train_set = FoodDataset(trainfiles, tfm=train_tfm)
     train_loaders.append(DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True))
-    valid_set = FoodDataset(valid_data, tfm=test_tfm)
+    # valid_set = FoodDataset(validFiles, tfm=test_tfm)
     valid_loaders.append(DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True))
-    models.append(model_Classifier)
 
-# %% [markdown]
-# ### Ensemble model
 
-# %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:24.520000Z","iopub.execute_input":"2023-03-20T03:01:24.520293Z","iopub.status.idle":"2023-03-20T03:01:40.501271Z","shell.execute_reply.started":"2023-03-20T03:01:24.520263Z","shell.execute_reply":"2023-03-20T03:01:40.499471Z"}}
-
-model_ensemble = Ensemble(nn.ModuleList(models), model_num)
 
 # %% [markdown]
 # ### Start Training
 
 # %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:24.520000Z","iopub.execute_input":"2023-03-20T03:01:24.520293Z","iopub.status.idle":"2023-03-20T03:01:40.501271Z","shell.execute_reply.started":"2023-03-20T03:01:24.520263Z","shell.execute_reply":"2023-03-20T03:01:40.499471Z"}}
 # Initialize trackers, these are not parameters and should not be changed
-stale = 0
-best_acc = [0 for _ in range(model_num)]
-print(f"[HW3 parameters] : epoch={n_epochs}\t batch={batch_size}\t label_smoothing={label_smoothing}\t lr={lr}\t model={model_name}\t model_num={model_num} TTA={TTA_ratio}")
-models, optimizer, train_loaders, valid_loaders = accelerator.prepare(
-    models, optimizer, train_loaders, valid_loaders
+
+# reload model
+if reload_model:
+    for index in range(model_num):
+        if os.path.exists(modelPath[index]):    
+            print(f"[train] reload model {index+1} parameters, model_path:{modelPath[index]}")
+            model_lists[index][1].load_state_dict(torch.load(modelPath[index]))
+        else:
+            print(f"model {index+1} not found")
+else: 
+    print(f"[train] restart with a new model")
+stale = [0 for _ in range(model_num)]
+best_accs = [0 for _ in range(model_num)]
+print(f"[HW3 parameters] : epoch={n_epochs}\t batch={batch_size}\t label_smoothing={label_smoothing}\t lr={lr}\t TTA={TTA_ratio}\t threshold={threshold}")
+model_lists, optimizers, schedules, train_loaders, valid_loaders = accelerator.prepare(
+    model_lists, optimizers, schedules, train_loaders, valid_loaders
 )
-for epoch in range(n_epochs):
-    # These are used to record cerain train_loader information in training.
-    index = 0
-    assert len(train_loaders) == len(valid_loaders)
-    for model, train_loader, valid_loader in zip(models, train_loaders, valid_loaders):
-        
-        # ---------- Training ----------
-        # Make sure the model is in train mode before training.
-        model.train()
+if retrain_model:
+    for epoch in range(n_epochs):
         # These are used to record cerain train_loader information in training.
-        train_loss = []
-        train_accs = []
-        for batch in tqdm(train_loader) :  
-            with accelerator.accumulate(model):
+        index = 0
+        assert len(train_loaders) == len(valid_loaders)
+        for model_list, optimizer, schedule, train_loader, valid_loader in zip(model_lists, optimizers, schedules, train_loaders, valid_loaders):
+
+            model= model_list[1]
+            # ---------- Training ----------
+            # Make sure the model is in train mode before training.
+            model.train()
+            # These are used to record cerain train_loader information in training.
+            train_loss = []
+            train_accs = []
+            for batch in tqdm(train_loader) :  
+                with accelerator.accumulate(model):
+                    # A batch consists of image data and corresponding labels.
+                    imgs, labels = batch
+                    #imgs = imgs.half()
+                    #print(imgs.shape,labels.shape)
+
+                    # Forward the data. (Make sure data and model are on the same device.)
+                    logits = model(imgs.to(device))
+
+                    # Calculate the cross-entropy loss.
+                    # We don't need to apply softmax before computing cross-entropy as it is done automatically.
+                    loss = criterion(logits, labels.to(device))
+
+                    # use gradient accumulate for more GPU memory
+                    loss = loss / gradient_accumulation_steps
+                    accelerator.backward(loss)
+
+                    grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    # Gradients stored in the parameters in the previous step should be cleared out first.
+                    # optimizer.zero_grad()
+
+                    # Compute the gradients for parameters.
+                    # print(f"before backward: \t{torch.cuda.memory_allocated()}")
+                    # loss.backward(retain_graph=True)
+
+                    # Clip the gradient norms for stable training.
+                    # grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
+
+                    # Update the parameters with computed gradients.
+                    # optimizer.step()
+
+                    # Compute the accuracy for current batch.
+                    acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+
+                    # Record the loss and accuracy.
+                    train_loss.append(loss.item())
+                    train_accs.append(acc)
+            
+            train_loss = sum(train_loss) / len(train_loss)
+            train_acc = sum(train_accs) / len(train_accs)
+            print(f"[ Train | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
+
+            # ----------------Validation-----------------
+
+            model.eval()
+
+            valid_loss = []
+            valid_accs = []
+            # Iterate the validation set by batches.
+            for batch in tqdm(valid_loader):
+
                 # A batch consists of image data and corresponding labels.
                 imgs, labels = batch
                 #imgs = imgs.half()
-                #print(imgs.shape,labels.shape)
 
-                # Forward the data. (Make sure data and model are on the same device.)
-                logits = model(imgs.to(device))
+                # We don't need gradient in validation.
+                # Using torch.no_grad() accelerates the forward process.
+                with torch.no_grad():
+                    logits = model(imgs.to(device))
 
-                # Calculate the cross-entropy loss.
-                # We don't need to apply softmax before computing cross-entropy as it is done automatically.
+                # We can still compute the loss (but not the gradient).
                 loss = criterion(logits, labels.to(device))
-
-                # use gradient accumulate for more GPU memory
-                loss = loss / gradient_accumulation_steps
-                accelerator.backward(loss)
-
-                grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
-                optimizer.step()
-                optimizer.zero_grad()
-                # Gradients stored in the parameters in the previous step should be cleared out first.
-                # optimizer.zero_grad()
-
-                # Compute the gradients for parameters.
-                # print(f"before backward: \t{torch.cuda.memory_allocated()}")
-                # loss.backward(retain_graph=True)
-
-                # Clip the gradient norms for stable training.
-                # grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
-
-                # Update the parameters with computed gradients.
-                # optimizer.step()
 
                 # Compute the accuracy for current batch.
                 acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
 
                 # Record the loss and accuracy.
-                train_loss.append(loss.item())
-                train_accs.append(acc)
-        
-        train_loss = sum(train_loss) / len(train_loss)
-        train_acc = sum(train_accs) / len(train_accs)
-        print(f"[ Train | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
+                valid_loss.append(loss.item())
+                valid_accs.append(acc)
+                #break
 
-        # ----------------Validation-----------------
+            # The average loss and accuracy for entire validation set is the average of the recorded values.
+            valid_loss = sum(valid_loss) / len(valid_loss)
+            valid_acc = sum(valid_accs) / len(valid_accs)
 
-        model.eval()
+            # change lr if model not improving
+            schedule.step(valid_loss)
 
-        valid_loss = []
-        valid_accs = []
-        # Iterate the validation set by batches.
-        for batch in tqdm(valid_loader):
+            if valid_acc > best_accs[index]:
+                with open(f"./{_exp_name}_log.txt","a"):
+                    print(f"[ Valid | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} => best")
+            else:
+                with open(f"./{_exp_name}_log.txt","a"):
+                    print(f"[ Valid | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
-            # A batch consists of image data and corresponding labels.
-            imgs, labels = batch
-            #imgs = imgs.half()
-
-            # We don't need gradient in validation.
-            # Using torch.no_grad() accelerates the forward process.
-            with torch.no_grad():
-                logits = model(imgs.to(device))
-
-            # We can still compute the loss (but not the gradient).
-            loss = criterion(logits, labels.to(device))
-
-            # Compute the accuracy for current batch.
-            acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
-
-            # Record the loss and accuracy.
-            valid_loss.append(loss.item())
-            valid_accs.append(acc)
-            #break
-
-        # The average loss and accuracy for entire validation set is the average of the recorded values.
-        valid_loss = sum(valid_loss) / len(valid_loss)
-        valid_acc = sum(valid_accs) / len(valid_accs)
-        if valid_acc > best_acc[index]:
-            with open(f"./{_exp_name}_log.txt","a"):
-                print(f"[ Valid | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} => best")
-        else:
-            with open(f"./{_exp_name}_log.txt","a"):
-                print(f"[ Valid | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
-
-        # save models
-        if valid_acc > best_acc[index]:
-            print(f"Best model found at epoch {epoch+1}, saving model_{index + 1}")
-            torch.save(model.state_dict(), f"{_exp_name}_model{index + 1}_best.ckpt") # only save best to prevent output memory exceed error
-            best_acc[index] = valid_acc
-            stale = 0
-        else:
-            stale = stale + 1
-            if stale > patience:
-                print(f"No improvment {patience} consecutive epochs, early stopping")
-                break
-        index = index + 1
+            # save models
+            if valid_acc > best_accs[index]:
+                print(f"Best model found at epoch {epoch+1}, saving model_{index + 1}")
+                torch.save(model.state_dict(), f"{_exp_name}_model{index + 1}_best.ckpt") # only save best to prevent output memory exceed error
+                best_accs[index] = valid_acc
+                stale[index] = 0
+            index = index + 1
 
 # %% [markdown]
 # ### Dataloader for test
@@ -468,19 +518,22 @@ for index in range(test_loader_num):
 # %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:40.504856Z","iopub.status.idle":"2023-03-20T03:01:40.505652Z","shell.execute_reply.started":"2023-03-20T03:01:40.505373Z","shell.execute_reply":"2023-03-20T03:01:40.505400Z"}}
 
 model_bests = []
-
+model_weight = [(best_acc/sum(best_accs)) for best_acc in best_accs]
+# model_weight = [1, 1]
+print("predict testing data...")
 for index in range(model_num):
-    model_best = model_Classifier
+    model_best = model_lists[index][1]
     model_best.load_state_dict(torch.load(f"{_exp_name}_model{index + 1}_best.ckpt"))
+    print(f"model {index+1} ({model_lists[index][0]}) loaded")
     model_bests.append(model_best)
 
-model_ensemble = Ensemble(nn.ModuleList(model_bests), model_num)
+model_ensemble = Ensemble(nn.ModuleList(model_bests), model_num, model_weight).to(device)
 model_ensemble.eval()
 prediction = []
 with torch.no_grad():
     for index, test_loader in enumerate(test_loaders):
         one_prediction = []
-        for data,_ in tqdm(test_loader):
+        for data, _ in tqdm(test_loader):
             test_pred = model_ensemble(data.to(device))
             test_label = np.argmax(test_pred.cpu().data.numpy(), axis=1)
             one_prediction = one_prediction + test_label.squeeze().tolist()
@@ -489,6 +542,9 @@ with torch.no_grad():
         else:
             assert len(one_prediction) == len(prediction)
             prediction = [ ( prediction[index] + (1-TTA_ratio) * one_prediction[index] ) for index in range(len(one_prediction))]
+        print(len(prediction))
+
+prediction = [round(pred) for pred in prediction]
 
 # %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:40.507032Z","iopub.status.idle":"2023-03-20T03:01:40.507795Z","shell.execute_reply.started":"2023-03-20T03:01:40.507533Z","shell.execute_reply":"2023-03-20T03:01:40.507560Z"}}
 #create test csv
@@ -498,3 +554,4 @@ df = pd.DataFrame()
 df["Id"] = [pad4(i) for i in range(len(test_set))]
 df["Category"] = prediction
 df.to_csv("submission.csv",index = False)
+print("csv file saved")
