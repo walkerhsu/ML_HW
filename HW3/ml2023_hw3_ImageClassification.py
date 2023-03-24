@@ -75,7 +75,6 @@ from torchvision import models
 from tqdm.auto import tqdm
 import random
 from accelerate import Accelerator
-import ttach
 
 # %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:21.637983Z","iopub.execute_input":"2023-03-20T03:01:21.639713Z","iopub.status.idle":"2023-03-20T03:01:21.645937Z","shell.execute_reply.started":"2023-03-20T03:01:21.639668Z","shell.execute_reply":"2023-03-20T03:01:21.644841Z"}}
 myseed = 6666  # set a random seed for reproducibility
@@ -104,12 +103,11 @@ train_tfm = transforms.Compose([
     transforms.Resize((128, 128)),
     # You may add some transforms here.
     transforms.ColorJitter(brightness=0.15, contrast=0.15, hue=0.15, saturation=0.15),
-    transforms.ElasticTransform(),
+    # transforms.ElasticTransform(),
     transforms.RandomPerspective(distortion_scale=0.3, p=0.3),
     transforms.RandomRotation(degrees=(0, 180)), 
     transforms.RandomHorizontalFlip(p=1),   
     transforms.RandomVerticalFlip(p=1),     
-    transforms.RandomInvert(),
     transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 2.0)),
     # ToTensor() should be the last one of the transforms.
     transforms.ToTensor(),
@@ -235,7 +233,10 @@ class Ensemble(nn.Module):
 
 # %% [markdown]
 # ### Configurations
+# 
+# 
 
+# %% [code]
 # The number of batch size.
 batch_size = 16
 
@@ -272,16 +273,15 @@ criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 # "cuda" only when GPUs are available.
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Initialize a model, and put it on the device specified.
+# Initialize model, optimizer and scheduler.
 model_lists = []
-
-# Initialize optimizer
-
-output_dim = 11
 lr = []
 optimizers = []
 schedules = []
-threshold = 1e-3
+split_num = 5 # different train valid split per model
+
+output_dim = 11
+threshold = 1e-4
 
     # 1) CNN model
 # lr_Classifier = 0.001
@@ -310,13 +310,14 @@ threshold = 1e-3
 # schedules.append(torch.optim.lr_scheduler.ReduceLROnPlateau(optimizers[-1], mode="min", factor=0.1, patience=patience, threshold=threshold, verbose=True))
 
     # 4) RESNET
-lr_RESNET = 0.01
-lr.append(lr_RESNET)
-model_RESNET = models.resnet50(weights=None).to(device)
-model_RESNET.fc = nn.Linear(2048, output_dim).to(device)
-model_lists.append(["RESNET", model_RESNET])
-optimizers.append(torch.optim.SGD(model_RESNET.parameters(), momentum=0.9, lr=lr_RESNET, weight_decay=1e-5))
-schedules.append(torch.optim.lr_scheduler.ReduceLROnPlateau(optimizers[-1], mode="min", factor=0.1, patience=patience, threshold=threshold, verbose=True))
+for _ in range(split_num) :
+    lr_RESNET = 0.01
+    lr.append(lr_RESNET)
+    model_RESNET = models.resnet50(weights=None).to(device)
+    model_RESNET.fc = nn.Linear(2048, output_dim).to(device)
+    model_lists.append(["RESNET", model_RESNET])
+    optimizers.append(torch.optim.SGD(model_RESNET.parameters(), momentum=0.9, lr=lr_RESNET, weight_decay=1e-5))
+    schedules.append(torch.optim.lr_scheduler.ReduceLROnPlateau(optimizers[-1], mode="min", factor=0.1, patience=patience, threshold=threshold, verbose=True))
 
     # 5) squeezenet1_0
 # model_Squeezenet = models.squeezenet1_0(weights=None).to(device)
@@ -331,18 +332,17 @@ for index, model_list in enumerate(model_lists):
 # %% [markdown]
 # ### Dataloader
 
-# %% [code] {"execution":{"iopub.status.busy":"2023-03-20T03:01:23.996646Z","iopub.execute_input":"2023-03-20T03:01:23.997018Z","iopub.status.idle":"2023-03-20T03:01:24.515874Z","shell.execute_reply.started":"2023-03-20T03:01:23.996978Z","shell.execute_reply":"2023-03-20T03:01:24.514627Z"}}
-
+# %% [code] {"execution":{"iopub.status.busy":"2023-03-20T03:01:23.996646Z","iopub.execute_input":"2023-03-20T03:01:23.997018Z","iopub.status.idle":"2023-03-20T03:01:24.515874Z","shell.execute_reply.started":"2023-03-20T03:01:23.996978Z","shell.execute_reply":"2023-03-20T03:01:24.514627Z"},"jupyter":{"outputs_hidden":false}}
 # Construct train and valid datasets.
 # The argument "loader" tells how torchvision reads the data.
 
-# trainPath = "/kaggle/input/ml2023spring-hw3/train"  # or "./train" 
-# validPath = "/kaggle/input/ml2023spring-hw3/valid" # or "./valid"
-# testPath = "/kaggle/input/ml2023spring-hw3/test" # or "./test"
+trainPath = "/kaggle/input/ml2023spring-hw3/train"
+validPath = "/kaggle/input/ml2023spring-hw3/valid"
+testPath = "/kaggle/input/ml2023spring-hw3/test"
 
-trainPath = "./train"
-validPath = "./valid"
-testPath = "./test"
+# trainPath = "./train"
+# validPath = "./valid"
+# testPath = "./test"
 modelPath = [(f"{_exp_name}_model{index + 1}_best.ckpt") for index in range(model_num)]
 
 trainfiles = sorted([os.path.join(trainPath,x) for x in os.listdir(trainPath) if x.endswith(".jpg")])
@@ -350,20 +350,18 @@ validFiles = sorted([os.path.join(validPath,x) for x in os.listdir(validPath) if
 testFiles = sorted([os.path.join(testPath,x) for x in os.listdir(testPath) if x.endswith(".jpg")])
 train_set = FoodDataset(trainfiles, tfm=train_tfm)
 valid_set = FoodDataset(validFiles, tfm=test_tfm)
-# train_valid_files = trainfiles + validFiles
+train_valid_files = trainfiles + validFiles
 train_loaders = []
 valid_loaders = []
 for _ in range(model_num):
-    # train_data_num = math.floor(len(train_valid_files)*train_valid_split)
-    # random.shuffle(train_valid_files)
-    # train_data = train_valid_files[ : train_data_num ]
-    # valid_data = train_valid_files[ train_data_num : ]
-    # train_set = FoodDataset(trainfiles, tfm=train_tfm)
+    train_data_num = math.floor(len(train_valid_files)*train_valid_split)
+    random.shuffle(train_valid_files)
+    train_data = train_valid_files[ : train_data_num ]
+    valid_data = train_valid_files[ train_data_num : ]
+    train_set = FoodDataset(trainfiles, tfm=train_tfm)
     train_loaders.append(DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True))
-    # valid_set = FoodDataset(validFiles, tfm=test_tfm)
+    valid_set = FoodDataset(validFiles, tfm=test_tfm)
     valid_loaders.append(DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True))
-
-
 
 # %% [markdown]
 # ### Start Training
@@ -381,12 +379,16 @@ if reload_model:
             print(f"model {index+1} not found")
 else: 
     print(f"[train] restart with a new model")
+
 stale = [0 for _ in range(model_num)]
 best_accs = [0 for _ in range(model_num)]
+
 print(f"[HW3 parameters] : epoch={n_epochs}\t batch={batch_size}\t label_smoothing={label_smoothing}\t lr={lr}\t TTA={TTA_ratio}\t threshold={threshold}")
-model_lists, optimizers, schedules, train_loaders, valid_loaders = accelerator.prepare(
-    model_lists, optimizers, schedules, train_loaders, valid_loaders
-)
+
+# model_lists, optimizers, schedules, train_loaders, valid_loaders = accelerator.prepare(
+#     model_lists, optimizers, schedules, train_loaders, valid_loaders
+# )
+
 if retrain_model:
     for epoch in range(n_epochs):
         # These are used to record cerain train_loader information in training.
@@ -402,7 +404,7 @@ if retrain_model:
             train_loss = []
             train_accs = []
             for batch in tqdm(train_loader) :  
-                with accelerator.accumulate(model):
+#                 with accelerator.accumulate(model):
                     # A batch consists of image data and corresponding labels.
                     imgs, labels = batch
                     #imgs = imgs.half()
@@ -415,32 +417,21 @@ if retrain_model:
                     # We don't need to apply softmax before computing cross-entropy as it is done automatically.
                     loss = criterion(logits, labels.to(device))
 
+                    loss.backward()
                     # use gradient accumulate for more GPU memory
-                    loss = loss / gradient_accumulation_steps
-                    accelerator.backward(loss)
+                    
+#                    accelerator.backward(loss)
 
                     grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
                     optimizer.step()
                     optimizer.zero_grad()
-                    # Gradients stored in the parameters in the previous step should be cleared out first.
-                    # optimizer.zero_grad()
-
-                    # Compute the gradients for parameters.
-                    # print(f"before backward: \t{torch.cuda.memory_allocated()}")
-                    # loss.backward(retain_graph=True)
-
-                    # Clip the gradient norms for stable training.
-                    # grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
-
-                    # Update the parameters with computed gradients.
-                    # optimizer.step()
 
                     # Compute the accuracy for current batch.
                     acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
-
                     # Record the loss and accuracy.
                     train_loss.append(loss.item())
                     train_accs.append(acc)
+                    print(loss.item(), acc)
             
             train_loss = sum(train_loss) / len(train_loss)
             train_acc = sum(train_accs) / len(train_accs)
@@ -469,7 +460,6 @@ if retrain_model:
 
                 # Compute the accuracy for current batch.
                 acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
-
                 # Record the loss and accuracy.
                 valid_loss.append(loss.item())
                 valid_accs.append(acc)
@@ -479,9 +469,6 @@ if retrain_model:
             valid_loss = sum(valid_loss) / len(valid_loss)
             valid_acc = sum(valid_accs) / len(valid_accs)
 
-            # change lr if model not improving
-            schedule.step(valid_loss)
-
             if valid_acc > best_accs[index]:
                 with open(f"./{_exp_name}_log.txt","a"):
                     print(f"[ Valid | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} => best")
@@ -489,13 +476,19 @@ if retrain_model:
                 with open(f"./{_exp_name}_log.txt","a"):
                     print(f"[ Valid | epoch {epoch + 1:03d}/{n_epochs:03d} , model {index + 1:03d}/{model_num:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
+            # change lr if model not improving
+            schedule.step(valid_loss)
+
+            
             # save models
             if valid_acc > best_accs[index]:
                 print(f"Best model found at epoch {epoch+1}, saving model_{index + 1}")
                 torch.save(model.state_dict(), f"{_exp_name}_model{index + 1}_best.ckpt") # only save best to prevent output memory exceed error
                 best_accs[index] = valid_acc
                 stale[index] = 0
+
             index = index + 1
+        print("")
 
 # %% [markdown]
 # ### Dataloader for test
@@ -504,7 +497,7 @@ if retrain_model:
 # Construct test datasets.
 # The argument "loader" tells how torchvision reads the data.
 test_loaders = []
-test_loader_num = 2
+test_loader_num = 6 #( 1 for test_tfm, 5 for train_tfm)
 for index in range(test_loader_num):
     if index == 0:
         test_set = FoodDataset(testFiles, tfm=test_tfm)
@@ -524,27 +517,33 @@ print("predict testing data...")
 for index in range(model_num):
     model_best = model_lists[index][1]
     model_best.load_state_dict(torch.load(f"{_exp_name}_model{index + 1}_best.ckpt"))
+    model_best.eval()
     print(f"model {index+1} ({model_lists[index][0]}) loaded")
     model_bests.append(model_best)
 
-model_ensemble = Ensemble(nn.ModuleList(model_bests), model_num, model_weight).to(device)
-model_ensemble.eval()
-prediction = []
+# model_ensemble = Ensemble(nn.ModuleList(model_bests), model_num, model_weight).to(device)
+# model_ensemble.eval()
+predictions = []
 with torch.no_grad():
-    for index, test_loader in enumerate(test_loaders):
+    for test_loader in enumerate(test_loaders):
         one_prediction = []
         for data, _ in tqdm(test_loader):
-            test_pred = model_ensemble(data.to(device))
-            test_label = np.argmax(test_pred.cpu().data.numpy(), axis=1)
-            one_prediction = one_prediction + test_label.squeeze().tolist()
-        if index == 0:
-            prediction = [ ( TTA_ratio * prediction ) for prediction in one_prediction ]
-        else:
-            assert len(one_prediction) == len(prediction)
-            prediction = [ ( prediction[index] + (1-TTA_ratio) * one_prediction[index] ) for index in range(len(one_prediction))]
-        print(len(prediction))
+            for model in model_bests:
+                test_pred = model(data.to(device))
+                test_label = np.argmax(test_pred.cpu().data.numpy(), axis=1)
+                one_prediction.append(test_label)
+            one_prediction = sum(one_prediction)
+            predictions.append(one_prediction)
 
-prediction = [round(pred) for pred in prediction]
+final_pred = []
+for index, one_prediction in enumerate(predictions):
+    if index == 0:
+        final_pred = [ ( TTA_ratio * prediction ) for prediction in one_prediction ]
+    else:
+        final_pred = [ ( final_pred[index] + (1-TTA_ratio)/(model_num,-1) * one_prediction[index] ) for index in range(len(one_prediction))]
+
+print(len(final_pred))
+prediction = [round(pred) for pred in final_pred]
 
 # %% [code] {"jupyter":{"outputs_hidden":false},"execution":{"iopub.status.busy":"2023-03-20T03:01:40.507032Z","iopub.status.idle":"2023-03-20T03:01:40.507795Z","shell.execute_reply.started":"2023-03-20T03:01:40.507533Z","shell.execute_reply":"2023-03-20T03:01:40.507560Z"}}
 #create test csv
