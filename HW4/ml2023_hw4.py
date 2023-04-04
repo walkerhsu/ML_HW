@@ -201,7 +201,7 @@ import torch.nn.functional as F
 from conformer import ConformerBlock
 
 class Classifier(nn.Module):
-	def __init__(self, d_model=200, n_spks=600, dim_feedforward=1024, nhead=4, dropout=0.1):
+	def __init__(self, d_model=200, n_spks=600, dim_feedforward=512, nhead=8, dropout=0.1):
 		super().__init__()
 		# Project the dimension of features from that of input into d_model.
 		self.prenet = nn.Linear(40, d_model)
@@ -211,10 +211,10 @@ class Classifier(nn.Module):
 		self.encoder_layer_transformer = nn.TransformerEncoderLayer(
 			d_model=d_model, dim_feedforward=dim_feedforward, nhead=nhead, dropout=dropout
 		)
-		self.encoder_transformer = nn.TransformerEncoder(self.encoder_layer_transformer, num_layers=2)
+		self.encoder_transformer = nn.TransformerEncoder(self.encoder_layer_transformer, num_layers=1)
 		self.encoder_layer_conformer = ConformerBlock(
 			dim=d_model,
-			dim_head=256,
+			dim_head=dim_feedforward,
 			heads=nhead,  
 			ff_mult=4,
 			conv_expansion_factor=4,
@@ -248,7 +248,7 @@ class Classifier(nn.Module):
 		# out: (batch size, length,  d_model)
 		out = self.encoder_transformer(out)
 		# out: (length, batch size, d_model)
-# 		out = out.permute(1, 0, 2)
+		# out = out.permute(1, 0, 2)
 		# The encoder layer expect features in the shape of (length, batch size, d_model).
 		out = self.encoder_layer_conformer(out)
 		# out: (batch size, length, d_model)
@@ -256,7 +256,7 @@ class Classifier(nn.Module):
 		# mean pooling
 		# stats = out.mean(dim=1)
 		# self_attention pooling
-		att_w = self.softmax(self.W(out).squeeze(-1)).unsqueeze(-1)
+		att_w = self.softmax(self.W(out).squeeze(-1), dim=1).unsqueeze(-1)
 		stats = torch.sum(out * att_w, dim=1)
 
 		# out: (batch, n_spks)
@@ -396,7 +396,7 @@ def parse_args():
 	"""arguments"""
 	config = {
 		"data_dir": "./Dataset",
-		"save_path": "model.ckpt",
+		"save_path": "./model.ckpt",
 		"batch_size":16,
 		"n_workers": 8,
 		"valid_steps": 2000,
@@ -421,7 +421,7 @@ def main(
 	reload,
 ):
 	"""Main function."""
-	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")                                
 	print(f"[Info]: Use {device} now!")
 
 	train_loader, valid_loader, speaker_num = get_dataloader(data_dir, batch_size, n_workers)
@@ -430,7 +430,7 @@ def main(
 
 	model = Classifier(n_spks=speaker_num).to(device)
 	if reload and os.path.exists(save_path):
-		model.load_state_dict(save_path)
+		model.load_state_dict(torch.load(save_path))         
 		print(f"[Info]: reload model!",flush = True)
 	criterion = nn.CrossEntropyLoss()
 	optimizer = AdamW(model.parameters(), lr=1e-3)
@@ -439,17 +439,17 @@ def main(
 
 	best_accuracy = -1.0
 	best_state_dict = None
-
-	pbar = tqdm(total=valid_steps, ncols=0, desc="Train", unit=" step")
+                     
+	pbar = tqdm(total=valid_steps, ncols=0, desc="Train", unit=" step")                                   
 
 	for step in range(total_steps):
 		# Get data
 		try:
 			batch = next(train_iterator)
-		except StopIteration:
+		except StopIteration:                                                             
 			train_iterator = iter(train_loader)
 			batch = next(train_iterator)
-
+                  
 		loss, accuracy = model_fn(batch, model, criterion, device)
 		batch_loss = loss.item()
 		batch_accuracy = accuracy.item()
