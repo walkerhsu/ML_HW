@@ -9,20 +9,20 @@
 #     - Switch to transformer model to boost performance
 #     - Apply Back-translation to furthur boost performance
 
-# %% [code] {"id":"3Vf1Q79XPQ3D","jupyter":{"outputs_hidden":false}}
-!nvidia-smi
+# # %% [code] {"id":"3Vf1Q79XPQ3D","jupyter":{"outputs_hidden":false}}
+# !nvidia-smi
 
 # %% [markdown] {"id":"59neB_Sxp5Ub"}
 # # Download and import required packages
 
-# %% [code] {"id":"rRlFbfFRpZYT","jupyter":{"outputs_hidden":false}}
-!pip install 'torch>=1.6.0' editdistance matplotlib sacrebleu sacremoses sentencepiece tqdm wandb
-!pip install --upgrade jupyter ipywidgets
+# # %% [code] {"id":"rRlFbfFRpZYT","jupyter":{"outputs_hidden":false}}
+# !pip install 'torch>=1.6.0' editdistance matplotlib sacrebleu sacremoses sentencepiece tqdm wandb
+# !pip install --upgrade jupyter ipywidgets
 
-# %% [code] {"id":"fSksMTdmp-Wt","jupyter":{"outputs_hidden":false}}
-!git clone https://github.com/pytorch/fairseq.git
-!cd fairseq && git checkout 9a1c497
-!pip install --upgrade ./fairseq/
+# # %% [code] {"id":"fSksMTdmp-Wt","jupyter":{"outputs_hidden":false}}
+# !git clone https://github.com/pytorch/fairseq.git
+# !cd fairseq && git checkout 9a1c497
+# !pip install --upgrade ./fairseq/
 
 # %% [code] {"id":"uRLTiuIuqGNc","jupyter":{"outputs_hidden":false}}
 import sys
@@ -91,15 +91,15 @@ prefix.mkdir(parents=True, exist_ok=True)
 for u, f in zip(urls, file_names):
     path = prefix/f
     if not path.exists():
-        !wget {u} -O {path}
+        os.system(f"wget {u} -O {path}")
     if path.suffix == ".tgz":
-        !tar -xvf {path} -C {prefix}
+        os.system(f"tar -xvf {path} -C {prefix}")
     elif path.suffix == ".zip":
-        !unzip -o {path} -d {prefix}
-!mv {prefix/'raw.en'} {prefix/'train_dev.raw.en'}
-!mv {prefix/'raw.zh'} {prefix/'train_dev.raw.zh'}
-!mv {prefix/'test.en'} {prefix/'test.raw.en'}
-!mv {prefix/'test.zh'} {prefix/'test.raw.zh'}
+        os.system(f"unzip -o {path} -d {prefix}")
+os.system(f"mv {prefix/'raw.en'} {prefix/'train_dev.raw.en'}")
+os.system(f"mv {prefix/'raw.zh'} {prefix/'train_dev.raw.zh'}")
+os.system(f"mv {prefix/'test.en'} {prefix/'test.raw.en'}")
+os.system(f"mv {prefix/'test.zh'} {prefix/'test.raw.zh'}")
 
 # %% [markdown] {"id":"YLkJwNiFrIwZ"}
 # ## Language
@@ -112,8 +112,8 @@ data_prefix = f'{prefix}/train_dev.raw'
 test_prefix = f'{prefix}/test.raw'
 
 # %% [code] {"id":"0t2CPt1brOT3","jupyter":{"outputs_hidden":false}}
-!head {data_prefix+'.'+src_lang} -n 5
-!head {data_prefix+'.'+tgt_lang} -n 5
+os.system(f"head {data_prefix+'.'+src_lang} -n 5")
+os.system(f"head {data_prefix+'.'+tgt_lang} -n 5")
 
 # %% [markdown] {"id":"pRoE9UK7r1gY"}
 # ## Preprocess files
@@ -191,8 +191,8 @@ clean_corpus(data_prefix, src_lang, tgt_lang)
 clean_corpus(test_prefix, src_lang, tgt_lang, ratio=-1, min_len=-1, max_len=-1)
 
 # %% [code] {"id":"gjT3XCy9r_rj","jupyter":{"outputs_hidden":false}}
-!head {data_prefix+'.clean.'+src_lang} -n 5
-!head {data_prefix+'.clean.'+tgt_lang} -n 5
+os.system(f"head {data_prefix+'.clean.'+src_lang} -n 5")
+os.system(f"head {data_prefix+'.clean.'+tgt_lang} -n 5")
 
 # %% [markdown] {"id":"nKb4u67-sT_Z"}
 # ## Split into train/valid
@@ -271,8 +271,8 @@ for split in ['train', 'valid', 'test']:
                         print(' '.join(tok), file=out_f)
 
 # %% [code] {"id":"4j6lXHjAsjXa","jupyter":{"outputs_hidden":false}}
-!head {data_dir+'/'+dataset_name+'/train.'+src_lang} -n 5
-!head {data_dir+'/'+dataset_name+'/train.'+tgt_lang} -n 5
+os.system(f"head {data_dir+'/'+dataset_name+'/train.'+src_lang} -n 5")
+os.system(f"head {data_dir+'/'+dataset_name+'/train.'+tgt_lang} -n 5")
 
 # %% [markdown] {"id":"59si_C0Wsms7"}
 # ## Binarize the data with fairseq
@@ -284,7 +284,7 @@ binpath = Path('./DATA/data-bin', dataset_name)
 if binpath.exists():
     print(binpath, "exists, will not overwrite!")
 else:
-    !python -m fairseq_cli.preprocess \
+    os.system(f"python -m fairseq_cli.preprocess \
         --source-lang {src_lang}\
         --target-lang {tgt_lang}\
         --trainpref {prefix/'train'}\
@@ -292,7 +292,7 @@ else:
         --testpref {prefix/'test'}\
         --destdir {binpath}\
         --joined-dictionary\
-        --workers 2
+        --workers 2")
 
 # %% [markdown] {"id":"szMuH1SWLPWA"}
 # # Configuration for experiments
@@ -300,7 +300,7 @@ else:
 # %% [code] {"id":"5Luz3_tVLUxs","jupyter":{"outputs_hidden":false}}
 config = Namespace(
     datadir = "./DATA/data-bin/ted2020",
-    savedir = "./checkpoints/rnn",
+    savedir = "./checkpoints/transformer",
     source_lang = src_lang,
     target_lang = tgt_lang,
     
@@ -315,10 +315,10 @@ config = Namespace(
     lr_warmup=4000,
     
     # clipping gradient norm helps alleviate gradient exploding
-    clip_norm=1.0,
+    clip_norm=2.0,
     
     # maximum epochs for training
-    max_epoch=15,
+    max_epoch=30,
     start_epoch=1,
     
     # beam size for beam search
@@ -331,7 +331,7 @@ config = Namespace(
     
     # checkpoints
     keep_last_epochs=5,
-    resume=None, # if resume from checkpoint name (under config.savedir)
+    resume="checkpoint_best.pt", # if resume from checkpoint name (under config.savedir)
     
     # logging
     use_wandb=False,
@@ -842,10 +842,10 @@ def build_model(args, task):
     
     # encoder decoder
     # HINT: TODO: switch to TransformerEncoder & TransformerDecoder
-    encoder = RNNEncoder(args, src_dict, encoder_embed_tokens)
-    decoder = RNNDecoder(args, tgt_dict, decoder_embed_tokens)
-    # encoder = TransformerEncoder(args, src_dict, encoder_embed_tokens)
-    # decoder = TransformerDecoder(args, tgt_dict, decoder_embed_tokens)
+    # encoder = RNNEncoder(args, src_dict, encoder_embed_tokens)
+    # decoder = RNNDecoder(args, tgt_dict, decoder_embed_tokens)
+    encoder = TransformerEncoder(args, src_dict, encoder_embed_tokens)
+    decoder = TransformerDecoder(args, tgt_dict, decoder_embed_tokens)
 
     # sequence to sequence model
     model = Seq2Seq(args, encoder, decoder)
@@ -880,23 +880,37 @@ def build_model(args, task):
 # For strong baseline, please refer to the hyperparameters for *transformer-base* in Table 3 in [Attention is all you need](#vaswani2017)
 
 # %% [code] {"id":"Cyn30VoGNT6N","jupyter":{"outputs_hidden":false}}
+
+# Transformer
 arch_args = Namespace(
-    encoder_embed_dim=256,
+    encoder_embed_dim=512,
     encoder_ffn_embed_dim=512,
-    encoder_layers=1,
-    decoder_embed_dim=256,
-    decoder_ffn_embed_dim=1024,
-    decoder_layers=1,
+    encoder_layers=4,
+    decoder_embed_dim=512,
+    decoder_ffn_embed_dim=2048,
+    decoder_layers=4,
     share_decoder_input_output_embed=True,
-    dropout=0.3,
+    dropout=0.1,
 )
+
+#RNN
+# arch_args = Namespace(
+#     encoder_embed_dim=256,
+#     encoder_ffn_embed_dim=512,
+#     encoder_layers=1,
+#     decoder_embed_dim=256,
+#     decoder_ffn_embed_dim=1024,
+#     decoder_layers=1,
+#     share_decoder_input_output_embed=True,
+#     dropout=0.3,
+# )
 
 # HINT: these patches on parameters for Transformer
 def add_transformer_args(args):
-    args.encoder_attention_heads=4
+    args.encoder_attention_heads=8
     args.encoder_normalize_before=True
     
-    args.decoder_attention_heads=4
+    args.decoder_attention_heads=8
     args.decoder_normalize_before=True
     
     args.activation_fn="relu"
@@ -907,7 +921,7 @@ def add_transformer_args(args):
     from fairseq.models.transformer import base_architecture
     base_architecture(arch_args)
 
-# add_transformer_args(arch_args)
+add_transformer_args(arch_args)
 
 # %% [code] {"id":"Nbb76QLCNZZZ","jupyter":{"outputs_hidden":false}}
 if config.use_wandb:
@@ -974,7 +988,7 @@ criterion = LabelSmoothedCrossEntropyCriterion(
 # %% [code] {"id":"sS7tQj1ROBYm","jupyter":{"outputs_hidden":false}}
 def get_rate(d_model, step_num, warmup_step):
     # TODO: Change lr from constant to the equation shown above
-    lr = 0.001
+    lr = d_model ** (-0.5) * min(step_num ** (-0.5), step_num * warmup_step ** (-1.5))
     return lr
 
 # %% [code] {"id":"J8hoAjHPNkh3","jupyter":{"outputs_hidden":false}}
@@ -1287,10 +1301,10 @@ while epoch_itr.next_epoch_idx <= config.max_epoch:
 # %% [code] {"id":"N70Gc6smPi1d","jupyter":{"outputs_hidden":false}}
 # averaging a few checkpoints can have a similar effect to ensemble
 checkdir=config.savedir
-!python ./fairseq/scripts/average_checkpoints.py \
+os.system(f"python ./fairseq/scripts/average_checkpoints.py \
 --inputs {checkdir} \
 --num-epoch-checkpoints 5 \
---output {checkdir}/avg_last_5_checkpoint.pt
+--output {checkdir}/avg_last_5_checkpoint.pt")
 
 # %% [markdown] {"id":"BAGMiun8PnZy"}
 # ## Confirm model weights used to generate submission
@@ -1374,15 +1388,15 @@ file_names = (
 for u, f in zip(urls, file_names):
     path = mono_prefix/f
     if not path.exists():
-        !wget {u} -O {path}
+        os.system(f"wget {u} -O {path}")
     else:
         print(f'{f} is exist, skip downloading')
     if path.suffix == ".tgz":
-        !tar -xvf {path} -C {prefix}
+        os.system(f"tar -xvf {path} -C {prefix}")
     elif path.suffix == ".zip":
-        !unzip -o {path} -d {prefix}
+        os.system(f"unzip -o {path} -d {prefix}")
     elif path.suffix == ".gz":
-        !gzip -fkd {path}
+        os.system(f"gzip -fkd {path}")
 
 # %% [markdown] {"id":"JOVQRHzGQU4-"}
 # ### TODO: clean corpus
@@ -1418,14 +1432,14 @@ monopref = str(mono_prefix/"mono.tok") # whatever filepath you get after applyin
 if binpath.exists():
     print(binpath, "exists, will not overwrite!")
 else:
-    !python -m fairseq_cli.preprocess\
+    os.system(f"python -m fairseq_cli.preprocess\
         --source-lang 'zh'\
         --target-lang 'en'\
         --trainpref {monopref}\
         --destdir {binpath}\
         --srcdict {src_dict_file}\
         --tgtdict {tgt_dict_file}\
-        --workers 2
+        --workers 2")
 
 # %% [markdown] {"id":"smA0JraEQdxz"}
 # ### TODO: Generate synthetic data with backward model
@@ -1439,10 +1453,10 @@ else:
 # %% [code] {"id":"jvaOVHeoQfkB","jupyter":{"outputs_hidden":false}}
 # Add binarized monolingual data to the original data directory, and name it with "split_name"
 # ex. ./DATA/data-bin/ted2020/\[split_name\].zh-en.\["en", "zh"\].\["bin", "idx"\]
-!cp ./DATA/data-bin/mono/train.zh-en.zh.bin ./DATA/data-bin/ted2020/mono.zh-en.zh.bin
-!cp ./DATA/data-bin/mono/train.zh-en.zh.idx ./DATA/data-bin/ted2020/mono.zh-en.zh.idx
-!cp ./DATA/data-bin/mono/train.zh-en.en.bin ./DATA/data-bin/ted2020/mono.zh-en.en.bin
-!cp ./DATA/data-bin/mono/train.zh-en.en.idx ./DATA/data-bin/ted2020/mono.zh-en.en.idx
+os.system(f"cp ./DATA/data-bin/mono/train.zh-en.zh.bin ./DATA/data-bin/ted2020/mono.zh-en.zh.bin")
+os.system(f"cp ./DATA/data-bin/mono/train.zh-en.zh.idx ./DATA/data-bin/ted2020/mono.zh-en.zh.idx")
+os.system(f"cp ./DATA/data-bin/mono/train.zh-en.en.bin ./DATA/data-bin/ted2020/mono.zh-en.en.bin")
+os.system(f"cp ./DATA/data-bin/mono/train.zh-en.en.idx ./DATA/data-bin/ted2020/mono.zh-en.en.idx")
 
 # %% [code] {"id":"fFEkxPu-Qhlc","jupyter":{"outputs_hidden":false}}
 # hint: do prediction on split='mono' to create prediction_file
@@ -1481,12 +1495,12 @@ else:
 
 # %% [code] {"id":"MSkse1tyQnsR","jupyter":{"outputs_hidden":false}}
 # create a new dataset from all the files prepared above
-!cp -r ./DATA/data-bin/ted2020/ ./DATA/data-bin/ted2020_with_mono/
+os.system(f"cp -r ./DATA/data-bin/ted2020/ ./DATA/data-bin/ted2020_with_mono/")
 
-!cp ./DATA/data-bin/synthetic/train.zh-en.zh.bin ./DATA/data-bin/ted2020_with_mono/train1.en-zh.zh.bin
-!cp ./DATA/data-bin/synthetic/train.zh-en.zh.idx ./DATA/data-bin/ted2020_with_mono/train1.en-zh.zh.idx
-!cp ./DATA/data-bin/synthetic/train.zh-en.en.bin ./DATA/data-bin/ted2020_with_mono/train1.en-zh.en.bin
-!cp ./DATA/data-bin/synthetic/train.zh-en.en.idx ./DATA/data-bin/ted2020_with_mono/train1.en-zh.en.idx
+os.system(f"cp ./DATA/data-bin/synthetic/train.zh-en.zh.bin ./DATA/data-bin/ted2020_with_mono/train1.en-zh.zh.bin")
+os.system(f"cp ./DATA/data-bin/synthetic/train.zh-en.zh.idx ./DATA/data-bin/ted2020_with_mono/train1.en-zh.zh.idx")
+os.system(f"cp ./DATA/data-bin/synthetic/train.zh-en.en.bin ./DATA/data-bin/ted2020_with_mono/train1.en-zh.en.bin")
+os.system(f"cp ./DATA/data-bin/synthetic/train.zh-en.en.idx ./DATA/data-bin/ted2020_with_mono/train1.en-zh.en.idx")
 
 # %% [markdown] {"id":"YVdxVGO3QrSs"}
 # Created new dataset "ted2020_with_mono"
