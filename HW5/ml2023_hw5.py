@@ -315,7 +315,7 @@ config = Namespace(
     lr_warmup=4000,
     
     # clipping gradient norm helps alleviate gradient exploding
-    clip_norm=2.0,
+    clip_norm=1.0,
     
     # maximum epochs for training
     max_epoch=30,
@@ -332,7 +332,7 @@ config = Namespace(
     # checkpoints
     keep_last_epochs=5,
     resume="checkpoint_best.pt", # if resume from checkpoint name (under config.savedir)
-    
+    retrain = True,
     # logging
     use_wandb=False,
 )
@@ -842,10 +842,10 @@ def build_model(args, task):
     
     # encoder decoder
     # HINT: TODO: switch to TransformerEncoder & TransformerDecoder
-    # encoder = RNNEncoder(args, src_dict, encoder_embed_tokens)
-    # decoder = RNNDecoder(args, tgt_dict, decoder_embed_tokens)
-    encoder = TransformerEncoder(args, src_dict, encoder_embed_tokens)
-    decoder = TransformerDecoder(args, tgt_dict, decoder_embed_tokens)
+    encoder = RNNEncoder(args, src_dict, encoder_embed_tokens)
+    decoder = RNNDecoder(args, tgt_dict, decoder_embed_tokens)
+    # encoder = TransformerEncoder(args, src_dict, encoder_embed_tokens)
+    # decoder = TransformerDecoder(args, tgt_dict, decoder_embed_tokens)
 
     # sequence to sequence model
     model = Seq2Seq(args, encoder, decoder)
@@ -882,28 +882,28 @@ def build_model(args, task):
 # %% [code] {"id":"Cyn30VoGNT6N","jupyter":{"outputs_hidden":false}}
 
 # Transformer
-arch_args = Namespace(
-    encoder_embed_dim=512,
-    encoder_ffn_embed_dim=512,
-    encoder_layers=4,
-    decoder_embed_dim=512,
-    decoder_ffn_embed_dim=2048,
-    decoder_layers=4,
-    share_decoder_input_output_embed=True,
-    dropout=0.1,
-)
-
-#RNN
 # arch_args = Namespace(
-#     encoder_embed_dim=256,
+#     encoder_embed_dim=512,
 #     encoder_ffn_embed_dim=512,
-#     encoder_layers=1,
-#     decoder_embed_dim=256,
-#     decoder_ffn_embed_dim=1024,
-#     decoder_layers=1,
+#     encoder_layers=4,
+#     decoder_embed_dim=512,
+#     decoder_ffn_embed_dim=2048,
+#     decoder_layers=4,
 #     share_decoder_input_output_embed=True,
-#     dropout=0.3,
+#     dropout=0.1,
 # )
+
+# RNN
+arch_args = Namespace(
+    encoder_embed_dim=256,
+    encoder_ffn_embed_dim=512,
+    encoder_layers=1,
+    decoder_embed_dim=256,
+    decoder_ffn_embed_dim=1024,
+    decoder_layers=1,
+    share_decoder_input_output_embed=True,
+    dropout=0.3,
+)
 
 # HINT: these patches on parameters for Transformer
 def add_transformer_args(args):
@@ -921,15 +921,23 @@ def add_transformer_args(args):
     from fairseq.models.transformer import base_architecture
     base_architecture(arch_args)
 
-add_transformer_args(arch_args)
+# add_transformer_args(arch_args)
 
 # %% [code] {"id":"Nbb76QLCNZZZ","jupyter":{"outputs_hidden":false}}
 if config.use_wandb:
     wandb.config.update(vars(arch_args))
 
 # %% [code] {"id":"7ZWfxsCDNatH","jupyter":{"outputs_hidden":false}}
+# from torch.nn.functional import cosine_similarity as cos_sim
+
 model = build_model(arch_args, task)
 logger.info(model)
+
+# position = model.decoder.embed_positions.weights.cpu().detach()
+# sim = cos_sim(position.unsqueeze(1), position, dim=2)
+# plt.figure(figsize=(8,8))
+# plt.matshow(sim)
+# plt.savefig('similarity.png')
 
 # %% [markdown] {"id":"aHll7GRNNdqc"}
 # # Optimization
@@ -1051,6 +1059,7 @@ None
 from fairseq.data import iterators
 from torch.cuda.amp import GradScaler, autocast
 
+grad_norms = []
 def train_one_epoch(epoch_itr, model, task, criterion, optimizer, accum_steps=1):
     itr = epoch_itr.next_epoch_itr(shuffle=True)
     itr = iterators.GroupedIterator(itr, accum_steps) # gradient accumulation: update every accum_steps samples
@@ -1089,6 +1098,7 @@ def train_one_epoch(epoch_itr, model, task, criterion, optimizer, accum_steps=1)
         scaler.unscale_(optimizer)
         optimizer.multiply_grads(1 / (sample_size or 1.0)) # (sample_size or 1.0) handles the case of a zero gradient
         gnorm = nn.utils.clip_grad_norm_(model.parameters(), config.clip_norm) # grad norm clipping prevents gradient exploding
+        grad_norms.append(gnorm.cpu().item())
         
         scaler.step(optimizer)
         scaler.update()
@@ -1268,90 +1278,96 @@ def try_load_checkpoint(model, optimizer=None, name=None):
 # ## Training loop
 
 # %% [code] {"id":"hu7RZbCUPKQr","jupyter":{"outputs_hidden":false}}
-model = model.to(device=device)
-criterion = criterion.to(device=device)
+if config.retrain:
+    model = model.to(device=device)
+    criterion = criterion.to(device=device)
 
-# %% [code] {"id":"5xxlJxU2PeAo","jupyter":{"outputs_hidden":false}}
-logger.info("task: {}".format(task.__class__.__name__))
-logger.info("encoder: {}".format(model.encoder.__class__.__name__))
-logger.info("decoder: {}".format(model.decoder.__class__.__name__))
-logger.info("criterion: {}".format(criterion.__class__.__name__))
-logger.info("optimizer: {}".format(optimizer.__class__.__name__))
-logger.info(
-    "num. model params: {:,} (num. trained: {:,})".format(
-        sum(p.numel() for p in model.parameters()),
-        sum(p.numel() for p in model.parameters() if p.requires_grad),
+    # %% [code] {"id":"5xxlJxU2PeAo","jupyter":{"outputs_hidden":false}}
+    logger.info("task: {}".format(task.__class__.__name__))
+    logger.info("encoder: {}".format(model.encoder.__class__.__name__))
+    logger.info("decoder: {}".format(model.decoder.__class__.__name__))
+    logger.info("criterion: {}".format(criterion.__class__.__name__))
+    logger.info("optimizer: {}".format(optimizer.__class__.__name__))
+    logger.info(
+        "num. model params: {:,} (num. trained: {:,})".format(
+            sum(p.numel() for p in model.parameters()),
+            sum(p.numel() for p in model.parameters() if p.requires_grad),
+        )
     )
-)
-logger.info(f"max tokens per batch = {config.max_tokens}, accumulate steps = {config.accum_steps}")
+    logger.info(f"max tokens per batch = {config.max_tokens}, accumulate steps = {config.accum_steps}")
 
-# %% [code] {"id":"MSPRqpQUPfaX","jupyter":{"outputs_hidden":false}}
-epoch_itr = load_data_iterator(task, "train", config.start_epoch, config.max_tokens, config.num_workers)
-try_load_checkpoint(model, optimizer, name=config.resume)
-while epoch_itr.next_epoch_idx <= config.max_epoch:
-    # train for one epoch
-    train_one_epoch(epoch_itr, model, task, criterion, optimizer, config.accum_steps)
-    stats = validate_and_save(model, task, criterion, optimizer, epoch=epoch_itr.epoch)
-    logger.info("end of epoch {}".format(epoch_itr.epoch))    
-    epoch_itr = load_data_iterator(task, "train", epoch_itr.next_epoch_idx, config.max_tokens, config.num_workers)
+    # %% [code] {"id":"MSPRqpQUPfaX","jupyter":{"outputs_hidden":false}}
+    epoch_itr = load_data_iterator(task, "train", config.start_epoch, config.max_tokens, config.num_workers)
+    try_load_checkpoint(model, optimizer, name=config.resume)
+    while epoch_itr.next_epoch_idx <= config.max_epoch:
+        # train for one epoch
+        train_one_epoch(epoch_itr, model, task, criterion, optimizer, config.accum_steps)
+        stats = validate_and_save(model, task, criterion, optimizer, epoch=epoch_itr.epoch)
+        logger.info("end of epoch {}".format(epoch_itr.epoch))    
+        epoch_itr = load_data_iterator(task, "train", epoch_itr.next_epoch_idx, config.max_tokens, config.num_workers)
 
-# %% [markdown] {"id":"KyjRwllxPjtf"}
-# # Submission
+    # %% [markdown] {"id":"KyjRwllxPjtf"}
+    # # Submission
 
-# %% [code] {"id":"N70Gc6smPi1d","jupyter":{"outputs_hidden":false}}
-# averaging a few checkpoints can have a similar effect to ensemble
-checkdir=config.savedir
-os.system(f"python ./fairseq/scripts/average_checkpoints.py \
---inputs {checkdir} \
---num-epoch-checkpoints 5 \
---output {checkdir}/avg_last_5_checkpoint.pt")
+    # %% [code] {"id":"N70Gc6smPi1d","jupyter":{"outputs_hidden":false}}
+    # averaging a few checkpoints can have a similar effect to ensemble
+    checkdir=config.savedir
+    os.system(f"python ./fairseq/scripts/average_checkpoints.py \
+    --inputs {checkdir} \
+    --num-epoch-checkpoints 5 \
+    --output {checkdir}/avg_last_5_checkpoint.pt")
 
-# %% [markdown] {"id":"BAGMiun8PnZy"}
-# ## Confirm model weights used to generate submission
+    # %% [markdown] {"id":"BAGMiun8PnZy"}
+    # ## Confirm model weights used to generate submission
 
-# %% [code] {"id":"tvRdivVUPnsU","jupyter":{"outputs_hidden":false}}
-# checkpoint_last.pt : latest epoch
-# checkpoint_best.pt : highest validation bleu
-# avg_last_5_checkpoint.pt: the average of last 5 epochs
-try_load_checkpoint(model, name="avg_last_5_checkpoint.pt")
-validate(model, task, criterion, log_to_wandb=False)
-None
+    # %% [code] {"id":"tvRdivVUPnsU","jupyter":{"outputs_hidden":false}}
+    # checkpoint_last.pt : latest epoch
+    # checkpoint_best.pt : highest validation bleu
+    # avg_last_5_checkpoint.pt: the average of last 5 epochs
+    try_load_checkpoint(model, name="avg_last_5_checkpoint.pt")
+    validate(model, task, criterion, log_to_wandb=False)
+    None
 
-# %% [markdown] {"id":"ioAIflXpPsxt"}
-# ## Generate Prediction
+    # %% [markdown] {"id":"ioAIflXpPsxt"}
+    # ## Generate Prediction
 
-# %% [code] {"id":"oYMxA8FlPtIq","jupyter":{"outputs_hidden":false}}
-def generate_prediction(model, task, split="test", outfile="./prediction.txt"):    
-    task.load_dataset(split=split, epoch=1)
-    itr = load_data_iterator(task, split, 1, config.max_tokens, config.num_workers).next_epoch_itr(shuffle=False)
-    
-    idxs = []
-    hyps = []
+    # %% [code] {"id":"oYMxA8FlPtIq","jupyter":{"outputs_hidden":false}}
+    def generate_prediction(model, task, split="test", outfile="./prediction.txt"):    
+        task.load_dataset(split=split, epoch=1)
+        itr = load_data_iterator(task, split, 1, config.max_tokens, config.num_workers).next_epoch_itr(shuffle=False)
+        
+        idxs = []
+        hyps = []
 
-    model.eval()
-    progress = tqdm.tqdm(itr, desc=f"prediction")
-    with torch.no_grad():
-        for i, sample in enumerate(progress):
-            # validation loss
-            sample = utils.move_to_cuda(sample, device=device)
+        model.eval()
+        progress = tqdm.tqdm(itr, desc=f"prediction")
+        with torch.no_grad():
+            for i, sample in enumerate(progress):
+                # validation loss
+                sample = utils.move_to_cuda(sample, device=device)
 
-            # do inference
-            s, h, r = inference_step(sample, model)
-            
-            hyps.extend(h)
-            idxs.extend(list(sample['id']))
-            
-    # sort based on the order before preprocess
-    hyps = [x for _,x in sorted(zip(idxs,hyps))]
-    
-    with open(outfile, "w") as f:
-        for h in hyps:
-            f.write(h+"\n")
+                # do inference
+                s, h, r = inference_step(sample, model)
+                
+                hyps.extend(h)
+                idxs.extend(list(sample['id']))
+                
+        # sort based on the order before preprocess
+        hyps = [x for _,x in sorted(zip(idxs,hyps))]
+        
+        with open(outfile, "w") as f:
+            for h in hyps:
+                f.write(h+"\n")
 
-# %% [code] {"id":"Le4RFWXxjmm0","jupyter":{"outputs_hidden":false}}
-generate_prediction(model, task)
+    # %% [code] {"id":"Le4RFWXxjmm0","jupyter":{"outputs_hidden":false}}
+    generate_prediction(model, task)
 
 # %% [code] {"id":"wvenyi6BPwnD","jupyter":{"outputs_hidden":false}}
+plt.plot(range(1, len(grad_norms)+1), grad_norms)
+plt.plot(range(1, len(grad_norms)+1), [config.clip_norm]*len(grad_norms), '-')
+plt.xlabel("step")
+plt.ylabel("gnorm")
+plt.savefig("gnorm_vs_step.png")
 raise
 
 # %% [markdown] {"id":"1z0cJE-wPzaU"}
@@ -1373,6 +1389,7 @@ raise
 
 # %% [code] {"id":"i7N4QlsbP8fh","jupyter":{"outputs_hidden":false}}
 mono_dataset_name = 'mono'
+mono_filename = "ted_zh_corpus.deduped"
 
 # %% [code] {"id":"396saD9-QBPY","jupyter":{"outputs_hidden":false}}
 mono_prefix = Path(data_dir).absolute() / mono_dataset_name
@@ -1390,13 +1407,14 @@ for u, f in zip(urls, file_names):
     if not path.exists():
         os.system(f"wget {u} -O {path}")
     else:
-        print(f'{f} is exist, skip downloading')
+        print(f'{f} exists, skip downloading')
     if path.suffix == ".tgz":
         os.system(f"tar -xvf {path} -C {prefix}")
     elif path.suffix == ".zip":
         os.system(f"unzip -o {path} -d {prefix}")
     elif path.suffix == ".gz":
         os.system(f"gzip -fkd {path}")
+
 
 # %% [markdown] {"id":"JOVQRHzGQU4-"}
 # ### TODO: clean corpus
@@ -1405,7 +1423,30 @@ for u, f in zip(urls, file_names):
 # 2. unify punctuation
 # 
 # hint: you can use clean_s() defined above to do this
+def clean_corpus_bk(prefix, l1, l2, ratio=-1, max_len=1000, min_len=1):
+    prefix = prefix / mono_filename
+    if Path(f'{prefix}.clean.{l1}').exists():
+        print(f'{prefix}.clean.{l1} exists. skipping clean.')
+        return
+    with open(f'{prefix}', 'r') as in_f:
+        with open(f'{prefix}.clean.{l1}', 'w') as l1_out_f:
+            with open(f'{prefix}.clean.{l2}', 'w') as l2_out_f:
+                for s1 in in_f:
+                    s1 = s1.strip()
+                    s1 = clean_s(s1, l1)
+                    s1_len = len_s(s1, l1)
+                    if min_len > 0: # remove short sentence
+                        if s1_len < min_len:
+                            continue
+                    if max_len > 0: # remove long sentence
+                        if s1_len > max_len:
+                            continue
+                    print(s1, file=out_f)
 
+clean_corpus_bk(mono_prefix, src_lang. tgt_lang, ratio=-1, min_len=-1, max_len=-1)
+
+
+os.system(f"head {str(mono_prefix / mono_filename) +'.clean.'+src_lang} -n 5")
 # %% [code] {"id":"eIYmxfUOQSov","jupyter":{"outputs_hidden":false}}
 
 
@@ -1417,7 +1458,32 @@ for u, f in zip(urls, file_names):
 # hint: spm model is located at DATA/raw-data/\[dataset\]/spm\[vocab_num\].model
 
 # %% [code] {"id":"vqgR4uUMQZGY","jupyter":{"outputs_hidden":false}}
+vocab_size = 8000
+if (mono_prefix/f'spm{vocab_size}.model').exists():
+    print(f'{mono_prefix}/spm{vocab_size}.model exists. skipping spm_train.')
+else:
+    spm.SentencePieceTrainer.train(
+        input=(f'{mono_prefix}/{mono_filename}.clean.{src_lang}'),
+        model_prefix=mono_prefix/f'spm{vocab_size}',
+        vocab_size=vocab_size,
+        character_coverage=1,
+        model_type='unigram', # 'bpe' works as well
+        input_sentence_size=1e6,
+        shuffle_input_sentence=True,
+        normalization_rule_name='nmt_nfkc_cf',
+    )
 
+spm_model = spm.SentencePieceProcessor(model_file=str(mono_prefix/f'spm{vocab_size}.model'))
+out_path = mono_prefix / f"{mono_filename}.{src_lang}"
+if out_path.exists():
+    print(f"{out_path} exists. skipping spm_encode.")
+else:
+    with open(out_path, 'w') as out_f:
+        with open(mono_prefix / f'{mono_filename}.clean.{src_lang}', 'r') as in_f:
+            for line in in_f:
+                line = line.strip()
+                tok = spm_model.encode(line, out_type=str)
+                print(' '.join(tok), file=out_f)
 
 # %% [markdown] {"id":"a65glBVXQZiE"}
 # ### Binarize
@@ -1428,18 +1494,20 @@ for u, f in zip(urls, file_names):
 binpath = Path('./DATA/data-bin', mono_dataset_name)
 src_dict_file = './DATA/data-bin/ted2020/dict.en.txt'
 tgt_dict_file = src_dict_file
-monopref = str(mono_prefix/"mono.tok") # whatever filepath you get after applying subword tokenization
+monopref = str(mono_prefix / f"{mono_filename}") # whatever filepath you get after applying subword tokenization
+print(f"monopref: {monopref}")
 if binpath.exists():
     print(binpath, "exists, will not overwrite!")
 else:
     os.system(f"python -m fairseq_cli.preprocess\
         --source-lang 'zh'\
-        --target-lang 'en'\
         --trainpref {monopref}\
         --destdir {binpath}\
         --srcdict {src_dict_file}\
         --tgtdict {tgt_dict_file}\
         --workers 2")
+
+print(f"done")
 
 # %% [markdown] {"id":"smA0JraEQdxz"}
 # ### TODO: Generate synthetic data with backward model
@@ -1477,21 +1545,21 @@ os.system(f"cp ./DATA/data-bin/mono/train.zh-en.en.idx ./DATA/data-bin/ted2020/m
 # output: ./DATA/rawdata/mono/mono.tok.en & mono.tok.zh
 #
 # hint: use fairseq to binarize these two files again
-# binpath = Path('./DATA/data-bin/synthetic')
-# src_dict_file = './DATA/data-bin/ted2020/dict.en.txt'
-# tgt_dict_file = src_dict_file
-# monopref = ./DATA/rawdata/mono/mono.tok # or whatever path after applying subword tokenization, w/o the suffix (.zh/.en)
-# if binpath.exists():
-#     print(binpath, "exists, will not overwrite!")
-# else:
-#     !python -m fairseq_cli.preprocess\
-#         --source-lang 'zh'\
-#         --target-lang 'en'\
-#         --trainpref {monopref}\
-#         --destdir {binpath}\
-#         --srcdict {src_dict_file}\
-#         --tgtdict {tgt_dict_file}\
-#         --workers 2
+binpath = Path('./DATA/data-bin/synthetic')
+src_dict_file = './DATA/data-bin/ted2020/dict.en.txt'
+tgt_dict_file = src_dict_file
+monopref = f"./DATA/rawdata/mono/mono.tok" # or whatever path after applying subword tokenization, w/o the suffix (.zh/.en)
+if binpath.exists():
+    print(binpath, "exists, will not overwrite!")
+else:
+    os.system(f"python -m fairseq_cli.preprocess\
+        --source-lang 'zh'\
+        --target-lang 'en'\
+        --trainpref {monopref}\
+        --destdir {binpath}\
+        --srcdict {src_dict_file}\
+        --tgtdict {tgt_dict_file}\
+        --workers 2")
 
 # %% [code] {"id":"MSkse1tyQnsR","jupyter":{"outputs_hidden":false}}
 # create a new dataset from all the files prepared above
