@@ -1363,10 +1363,12 @@ if config.retrain:
     generate_prediction(model, task)
 
 # %% [code] {"id":"wvenyi6BPwnD","jupyter":{"outputs_hidden":false}}
+# print(len(grad_norms))
 plt.plot(range(1, len(grad_norms)+1), grad_norms)
 plt.plot(range(1, len(grad_norms)+1), [config.clip_norm]*len(grad_norms), '-')
 plt.xlabel("step")
 plt.ylabel("gnorm")
+plt.xlim(1, len(grad_norms)+1)
 plt.savefig("gnorm_vs_step.png")
 raise
 
