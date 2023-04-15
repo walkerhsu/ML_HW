@@ -53,6 +53,11 @@ os.system(f"pip install transformers")
 os.system(f"pip install ema_pytorch")
 os.system(f"pip install accelerate")
 
+os.system(f"curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash")
+os.system(f"apt-get install git-lfs")
+os.system(f"git lfs install")
+os.system(f"git clone https://huggingface.co/datasets/LeoFeng/MLHW_6")
+os.system(f"unzip ./MLHW_6/faces.zip -d .")
 
 # %% [markdown] {"id":"Rj17psVw7Shg"}
 # ## Step 1: Forward process (Noise scheduler)
