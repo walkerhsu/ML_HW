@@ -48,16 +48,16 @@ if torch.cuda.is_available():
   torch.cuda.manual_seed(4096)
 
 # %% [code] {"id":"s1xegyILIuLz","outputId":"b71ce929-c0bd-4ff0-ff53-cb01b421c2e9","execution":{"iopub.status.busy":"2023-03-30T06:17:55.373297Z","iopub.execute_input":"2023-03-30T06:17:55.374214Z","iopub.status.idle":"2023-03-30T06:18:43.218774Z","shell.execute_reply.started":"2023-03-30T06:17:55.374161Z","shell.execute_reply":"2023-03-30T06:18:43.217348Z"}}
-os.system(f"pip install einops")
-os.system(f"pip install transformers")
-os.system(f"pip install ema_pytorch")
-os.system(f"pip install accelerate")
+# os.system(f"pip install einops")
+# os.system(f"pip install transformers")
+# os.system(f"pip install ema_pytorch")
+# os.system(f"pip install accelerate")
 
-os.system(f"curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash")
-os.system(f"apt-get install git-lfs")
-os.system(f"git lfs install")
-os.system(f"git clone https://huggingface.co/datasets/LeoFeng/MLHW_6")
-os.system(f"unzip ./MLHW_6/faces.zip -d .")
+# os.system(f"curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash")
+# os.system(f"apt-get install git-lfs")
+# os.system(f"git lfs install")
+# os.system(f"git clone https://huggingface.co/datasets/LeoFeng/MLHW_6")
+# os.system(f"unzip ./MLHW_6/faces.zip -d .")
 
 # %% [markdown] {"id":"Rj17psVw7Shg"}
 # ## Step 1: Forward process (Noise scheduler)
@@ -867,7 +867,7 @@ class Trainer(object):
 # # Training Hyper-parameters
 
 # %% [code] {"id":"wOZPtVPvInQu"}
-path = '/kaggle/input/diffusion/faces/faces'
+path = './faces'
 IMG_SIZE = 64             # Size of images, do not change this if you do not know why you need to change
 batch_size = 16
 train_num_steps = 10000        # total training steps
@@ -910,7 +910,7 @@ trainer.train()
 # # Inference
 
 # %% [code] {"id":"MHoY_6CrInQv","outputId":"010af6c5-a426-42cd-b560-721fff3baa84"}
-ckpt = '/content/drive/MyDrive/ML 2023 Spring/model-55.pt'
+ckpt = './results/model-10.pt'
 trainer.load(ckpt)
 trainer.inference()
 
